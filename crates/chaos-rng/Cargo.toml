@@ -1,0 +1,15 @@
+[package]
+name = "chaos-rng"
+description = "Deterministic pseudo-random generator driven by the Lorenz attractor, with the statistical battery used to qualify it"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+rand_chacha = { workspace = true }
+
+[lints.rust]
+missing_docs = "warn"

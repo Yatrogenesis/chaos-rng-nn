@@ -1,0 +1,18 @@
+[package]
+name = "experiment"
+description = "Controlled comparison of a Lorenz-driven generator against ChaCha8 as the randomness source in neural network training"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+chaos-rng = { workspace = true }
+xstats = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+csv = { workspace = true }
+sha2 = { workspace = true }
+plotters = { workspace = true }

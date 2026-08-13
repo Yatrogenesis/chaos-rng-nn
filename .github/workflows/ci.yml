@@ -1,0 +1,33 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Format
+        run: cargo fmt --all -- --check
+
+      - name: Clippy, warnings are errors
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      # The Phase 0 battery runs here as a test, not as a loose script, so a
+      # regression in the generator fails the build.
+      - name: Tests
+        run: cargo test --workspace --release
+
+      - name: Phase 0 gate
+        run: cargo run --release -p experiment -- phase0

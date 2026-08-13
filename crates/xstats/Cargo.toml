@@ -1,0 +1,14 @@
+[package]
+name = "xstats"
+description = "Hypothesis tests implemented from closed forms: Welch, Mann-Whitney U, Shapiro-Wilk"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+
+[lints.rust]
+missing_docs = "warn"

@@ -1,0 +1,74 @@
+[
+  {
+    "metric": "final_val_loss",
+    "shapiro_w_lorenz": 0.8425376798862974,
+    "shapiro_p_lorenz": 0.04732148293501748,
+    "shapiro_w_chacha": 0.9252240114419997,
+    "shapiro_p_chacha": 0.4025895000186741,
+    "test_used": "Mann-Whitney U (exact, Shapiro-Wilk rejected normality: p = 0.0473 and 0.4026)",
+    "statistic": 64.0,
+    "p_value": 0.3149992422438243,
+    "cohens_d": 0.44308913694691654,
+    "rejects_h0": false
+  },
+  {
+    "metric": "final_val_accuracy",
+    "shapiro_w_lorenz": 0.9081115937753667,
+    "shapiro_p_lorenz": 0.2682699303673459,
+    "shapiro_w_chacha": 0.837481367035442,
+    "shapiro_p_chacha": 0.041160394746813656,
+    "test_used": "Mann-Whitney U (normal approximation, Shapiro-Wilk rejected normality: p = 0.2683 and 0.0412)",
+    "statistic": 50.5,
+    "p_value": 0.9999999699999995,
+    "cohens_d": 0.18276230972403112,
+    "rejects_h0": false
+  },
+  {
+    "metric": "generalisation_gap",
+    "shapiro_w_lorenz": 0.8395498335004333,
+    "shapiro_p_lorenz": 0.04357964436163586,
+    "shapiro_w_chacha": 0.9187213010662238,
+    "shapiro_p_chacha": 0.3464134246659385,
+    "test_used": "Mann-Whitney U (exact, Shapiro-Wilk rejected normality: p = 0.0436 and 0.3464)",
+    "statistic": 61.0,
+    "p_value": 0.43587217735824546,
+    "cohens_d": 0.22982551108017363,
+    "rejects_h0": false
+  },
+  {
+    "metric": "epochs_to_threshold",
+    "shapiro_w_lorenz": 1.0,
+    "shapiro_p_lorenz": 1.0,
+    "shapiro_w_chacha": 1.0,
+    "shapiro_p_chacha": 1.0,
+    "test_used": "Welch t-test (Shapiro-Wilk did not reject normality: p = 1.0000 and 1.0000)",
+    "statistic": 0.0,
+    "p_value": 1.0,
+    "cohens_d": 0.0,
+    "rejects_h0": false
+  },
+  {
+    "metric": "wall_clock_seconds",
+    "shapiro_w_lorenz": 0.5229522853064362,
+    "shapiro_p_lorenz": 6.765486841864288e-6,
+    "shapiro_w_chacha": 0.7630310502074641,
+    "shapiro_p_chacha": 0.005143276727674562,
+    "test_used": "Mann-Whitney U (exact, Shapiro-Wilk rejected normality: p = 0.0000 and 0.0051)",
+    "statistic": 100.0,
+    "p_value": 0.00001082508822446903,
+    "cohens_d": 100.36334429642247,
+    "rejects_h0": true
+  },
+  {
+    "metric": "epochs_to_train_loss_below_0.10_post_hoc",
+    "shapiro_w_lorenz": 0.9364394344691139,
+    "shapiro_p_lorenz": 0.5141156941601888,
+    "shapiro_w_chacha": 0.8916544137909502,
+    "shapiro_p_chacha": 0.17699620432628527,
+    "test_used": "Welch t-test (Shapiro-Wilk did not reject normality: p = 0.5141 and 0.1770)",
+    "statistic": -0.34641016151377574,
+    "p_value": 0.7334250969129646,
+    "cohens_d": -0.15491933384829681,
+    "rejects_h0": false
+  }
+]

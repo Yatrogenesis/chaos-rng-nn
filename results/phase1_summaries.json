@@ -1,0 +1,110 @@
+[
+  {
+    "rng": "lorenz",
+    "metric": "final_val_loss",
+    "n": 10,
+    "mean": 0.12244128003660686,
+    "std_dev": 0.00968426010525362,
+    "min": 0.11057676597559651,
+    "max": 0.14617078831269656
+  },
+  {
+    "rng": "chacha8",
+    "metric": "final_val_loss",
+    "n": 10,
+    "mean": 0.11884413394123572,
+    "std_dev": 0.006166833546182917,
+    "min": 0.1114890956942946,
+    "max": 0.1316245132045637
+  },
+  {
+    "rng": "lorenz",
+    "metric": "final_val_accuracy",
+    "n": 10,
+    "mean": 0.9692000000000001,
+    "std_dev": 0.0028596814119369648,
+    "min": 0.966,
+    "max": 0.974
+  },
+  {
+    "rng": "chacha8",
+    "metric": "final_val_accuracy",
+    "n": 10,
+    "mean": 0.9686000000000001,
+    "std_dev": 0.0036575644598253907,
+    "min": 0.96,
+    "max": 0.972
+  },
+  {
+    "rng": "lorenz",
+    "metric": "generalisation_gap",
+    "n": 10,
+    "mean": 0.06259863400628561,
+    "std_dev": 0.007467710694606371,
+    "min": 0.05186431288007435,
+    "max": 0.08073492718316361
+  },
+  {
+    "rng": "chacha8",
+    "metric": "generalisation_gap",
+    "n": 10,
+    "mean": 0.061116194371097235,
+    "std_dev": 0.005238855212918202,
+    "min": 0.05454975131970049,
+    "max": 0.07200341782098227
+  },
+  {
+    "rng": "lorenz",
+    "metric": "epochs_to_threshold",
+    "n": 10,
+    "mean": 1.0,
+    "std_dev": 0.0,
+    "min": 1.0,
+    "max": 1.0
+  },
+  {
+    "rng": "chacha8",
+    "metric": "epochs_to_threshold",
+    "n": 10,
+    "mean": 1.0,
+    "std_dev": 0.0,
+    "min": 1.0,
+    "max": 1.0
+  },
+  {
+    "rng": "lorenz",
+    "metric": "wall_clock_seconds",
+    "n": 10,
+    "mean": 1.1168275429999999,
+    "std_dev": 0.010398755971098933,
+    "min": 1.111763245,
+    "max": 1.145907563
+  },
+  {
+    "rng": "chacha8",
+    "metric": "wall_clock_seconds",
+    "n": 10,
+    "mean": 0.371316187,
+    "std_dev": 0.0014899407596169051,
+    "min": 0.369664428,
+    "max": 0.375187099
+  },
+  {
+    "rng": "lorenz",
+    "metric": "epochs_to_train_loss_below_0.10_post_hoc",
+    "n": 10,
+    "mean": 7.2,
+    "std_dev": 1.4757295747452437,
+    "min": 5.0,
+    "max": 10.0
+  },
+  {
+    "rng": "chacha8",
+    "metric": "epochs_to_train_loss_below_0.10_post_hoc",
+    "n": 10,
+    "mean": 7.4,
+    "std_dev": 1.0749676997731399,
+    "min": 6.0,
+    "max": 9.0
+  }
+]
