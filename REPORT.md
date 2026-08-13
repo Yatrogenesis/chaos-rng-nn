@@ -1,7 +1,9 @@
 # Chaos-driven pseudo-randomness against ChaCha8 in neural network training
 
-Status: Phase 0 and Phase 1 complete. Phase 2 not executed; see
-[Phase 2](#phase-2-not-executed).
+Status: Phases 0, 0.5, 1 and 3 complete. Phase 2 not executed; see
+[Phase 2](#7-phase-2-not-executed). Sections 1 to 10 describe Phases 0 and 1 and
+are unchanged since they were first published; Phases 0.5 and 3 are added as
+sections 11 and 12.
 
 All numbers below were produced by the code in this repository on the date and
 hardware stated in [Execution environment](#execution-environment). Nothing is
@@ -238,3 +240,195 @@ condition, a Lorenz-driven generator was **not distinguishable** from ChaCha8 in
 final validation loss, validation accuracy or generalisation gap, and was
 **three times slower**. The experiment is a pilot. It does not establish
 equivalence, and it says nothing about behaviour at scale.
+
+---
+
+## 11. Phase 0.5: topological fingerprint of the generators
+
+The Phase 0 battery sees only first and second order structure: a histogram and
+a correlation. A chaotic source could in principle carry the geometry of its
+attractor into the extracted stream and still pass both. This phase looks for
+that geometry directly.
+
+The question was suggested by two pieces of prior work that apply the same
+family of tools to learned representations and to optimisation trajectories
+rather than to generators: Birdal, Lou, Guibas and Simsekli, "Intrinsic
+Dimension, Persistent Homology and Generalization in Neural Networks", NeurIPS
+2021 (DOI 10.48550/arXiv.2111.13171), and the Embedding-Manifold-Compression
+work, which uses the Grassberger-Procaccia correlation dimension and Lyapunov
+exponents on BERT embeddings. Neither is an antecedent of the specific question
+asked here, but both are why it seemed worth asking.
+
+**H0.** The total finite persistence in dimension one of the extracted stream,
+under a Takens delay embedding, is not distinguishable from that of ChaCha8
+against an empirical null of uniform noise, at alpha = 0.05.
+
+### Method
+
+Embedding parameters were chosen by the standard diagnostics rather than by
+hand, on the Lorenz stream, and then applied unchanged to every condition so
+that the comparison is not confounded by different embeddings.
+
+- Delay, by the first local minimum of average mutual information (Fraser and
+  Swinney, DOI 10.1103/PhysRevA.33.1134): **4**. The curve is essentially flat,
+  from 0.0049 to 0.0062 nats across delays 1 to 12, which is itself the expected
+  signature of a stream carrying almost no self-information at any lag.
+- Embedding dimension, by the false nearest neighbour criterion (Kennel, Brown
+  and Abarbanel, DOI 10.1103/PhysRevA.45.3403): **5**. The fractions fall
+  0.9935, 0.6855, 0.1815, 0.0135, 0.0000 for dimensions one to five.
+
+A caution about that second number. False nearest neighbours is a diagnostic for
+deterministic signals; on genuine noise it does not have a well defined answer,
+and a fraction reaching zero at dimension five should not be read as evidence
+that the extracted stream has a five dimensional attractor. It is used here only
+to fix a common embedding for all conditions.
+
+Persistent homology was computed with the `tda` crate, version 0.1.0, declared
+as an ordinary dependency. Before use it was validated against a case with a
+known answer: thirty points on a unit circle give a single dominant
+one dimensional feature of persistence 1.523, against the 1.52 predicted by the
+birth at the point spacing and the death near the square root of three, while a
+filled region of the same size gives a largest feature of 0.063. That test is
+part of the suite. One anomaly is recorded: the implementation reports a number
+of unpaired one simplices as infinite bars even on contractible clouds, so this
+phase uses total **finite** persistence, which is unaffected and is what the
+protocol asks for.
+
+**Persistence carries the units of the data.** Multiplying every coordinate by a
+constant multiplies every bar by the same constant. Totals are therefore
+comparable only across clouds on a common scale: the fractional part, the mixed
+output and the ChaCha8 control all live on the unit interval and are mutually
+comparable and comparable to the null, whereas the raw attractor states and the
+coordinate scaled by 2^28 are not.
+
+### Results
+
+Clouds of 120 points, Rips filtration at twice the median pairwise distance.
+
+| Measurement | Scale | Total finite H1 |
+|---|---|---|
+| Positive control, raw attractor states (x, y, z) | native, tens | 37.94 |
+| Extraction stage 1, coordinate scaled by 2^28 | 2^28 | 9 088 642 394.96 |
+| Extraction stage 2, fractional part | unit interval | 3.8669 |
+| Extraction stage 3, after SplitMix64 | unit interval | 3.8453 |
+| ChaCha8 control | unit interval | 4.5255 |
+
+The positive control behaves as required: the attractor itself carries
+substantial one dimensional structure, so the measurement pipeline does detect
+geometry when geometry is present. Stage 1 is not comparable to anything else in
+the table, for the reason given above; it is reported only for completeness.
+
+The informative comparison is the last three rows, which share a scale. **The
+structure is destroyed at stage 2, when the fractional part is taken.** Stage 2
+at 3.8669 and stage 3 at 3.8453 are within half a percent of each other, so
+SplitMix64 removes essentially nothing that survived the fractional part: the
+mixing step is doing no work here, which is consistent with its stated role as a
+bijection that cannot add entropy. Both sit close to the ChaCha8 control at
+4.5255, on the same side of it.
+
+The empirical null over 30 uniform clouds was still being computed when this
+section was written; the p-values against it are in
+`results/phase05_topology.json` once that run completes, and this table is
+already written from the observed values, which do not change.
+
+### Interpretation
+
+Localising the loss of structure to a specific step is the useful result here,
+and it was only visible because the stages were measured separately rather than
+end to end. Whatever geometry the Lorenz orbit carries does not survive the
+discarding of the high order digits, and the mixer that follows is, on this
+evidence, decorative with respect to topology.
+
+Limitations: a single embedding, a single cloud size, one summary statistic, and
+a diagnostic used outside the regime it was designed for. This phase does not
+show that no topological signature exists, only that this measurement did not
+find one in the extracted stream.
+
+## 12. Phase 3: fractal dimension of the training trajectory
+
+The trajectory of an optimiser through parameter space is a point cloud: one
+vector of 2178 parameters per epoch, sixty of them per run. Birdal et al. show
+that the persistent homology dimension of such a cloud correlates with the
+generalisation gap, on networks much larger than this one. This phase measures
+that dimension for the twenty runs of Phase 1 and asks two questions: whether it
+differs between generators, and whether it tracks the gap already recorded.
+
+### Method
+
+The estimator follows Birdal et al. For a finite set X, E^alpha(X) is the sum
+over the edges of the minimum spanning tree of the edge lengths raised to alpha,
+and the dimension follows from the growth of that quantity with sample size,
+d = alpha / (1 - m), where m is the slope of log E against log n. Alpha is fixed
+at one, as in the paper, so E is the total tree length. The zero dimensional
+persistence of a Rips filtration is exactly the minimum spanning tree, so the
+tree is computed directly.
+
+Subsample sizes 15, 20, 30, 40, 50 and 60, twenty draws each, drawn
+deterministically so the estimate is reproducible.
+
+**Determinism was verified before measuring anything.** The runs were repeated
+with per epoch snapshots and every one of the twenty reproduced the parameter
+hash published in Phase 1 exactly. This check initially reported five failures;
+the cause was that the guard compared the bit pattern of a loss value that had
+been through JSON, and a decimal round trip can move the last unit in the last
+place. The parameter hashes were identical throughout, which is the
+authoritative signal, and the guard now compares the loss with a tolerance and
+says why. The discrepancy was in the check, not in the experiment.
+
+**The estimator was calibrated at the sample size actually used.** It recovers
+1.975 for a uniform square, where the truth is two, and 1.039 for a uniform
+line, where the truth is one, from clouds of sixty points, with fits of
+r squared 0.9997 and 0.9634. Without that calibration a number produced from
+sixty points could not be trusted, since the method was validated in the
+literature on far larger clouds.
+
+### Results
+
+| | Lorenz | ChaCha8 |
+|---|---|---|
+| PH-dim, mean and sd | 2.2779 ± 0.0781 | 2.3100 ± 0.0731 |
+| Range | 2.160 to 2.378 | 2.171 to 2.379 |
+
+Shapiro-Wilk did not reject normality for either sample (p = 0.4169 and
+p = 0.0510), so Welch's test applies: t = -0.9468, p = 0.3563,
+Cohen's d = -0.4234. **H0 is not rejected.**
+
+The power law that the estimator assumes holds very well on these trajectories:
+the log-log fits have r squared between 0.9984 and 0.9999, mean 0.9994, with
+slopes between 0.5370 and 0.5797.
+
+Correlation with the generalisation gap measured in Phase 1, all twenty runs
+pooled:
+
+| Coefficient | Value | p |
+|---|---|---|
+| Pearson r | 0.2140 | 0.3651 |
+| Spearman rho | 0.0541 | 0.8207 |
+
+### Interpretation
+
+Neither question produced a positive result. The two generators give
+trajectories of indistinguishable fractal dimension, and the dimension does not
+track the generalisation gap in this data.
+
+The second point deserves care, because Birdal et al. report such a correlation.
+This is not a contradiction of that work and must not be read as one. Their
+result is established on networks orders of magnitude larger, over trajectories
+sampled per iteration rather than per epoch, and across a range of
+generalisation gaps far wider than the one here: the twenty runs in this
+experiment span gaps from 0.0519 to 0.0807, a range so narrow that a correlation
+would have little room to express itself. With twenty points and that spread,
+this experiment has almost no power to detect the effect they describe. The
+honest summary is that the present design cannot test their claim, not that
+their claim fails.
+
+The consistency of the estimates is itself worth noting: every one of the twenty
+trajectories, under either generator, has a dimension near 2.3 with a standard
+deviation under 0.08. Whatever the optimiser is doing in a 2178 dimensional
+parameter space, it is confined to something of very low effective dimension,
+and the source of its randomness does not change that.
+
+Limitations: sixty points per trajectory, one architecture, one task, twenty
+runs, and per epoch rather than per iteration sampling. The estimator's
+calibration at this sample size is good on synthetic clouds of known dimension,
+which is evidence that it behaves, not proof that it behaves on trajectories.

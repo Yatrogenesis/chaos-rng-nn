@@ -1,0 +1,12 @@
+{
+  "metric": "ph_dimension",
+  "shapiro_w_lorenz": 0.92677186814783,
+  "shapiro_p_lorenz": 0.41690121656823953,
+  "shapiro_w_chacha": 0.8452482195573838,
+  "shapiro_p_chacha": 0.0509862776817408,
+  "test_used": "Welch t-test (Shapiro-Wilk did not reject normality: p = 0.4169 and 0.0510)",
+  "statistic": -0.9467879630678417,
+  "p_value": 0.3563379248456513,
+  "cohens_d": -0.42341644913965093,
+  "rejects_h0": false
+}

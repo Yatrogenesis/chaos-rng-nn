@@ -1,0 +1,18 @@
+Phase 3: persistent-homology dimension of the training trajectory
+  calibration at 60 points: uniform square gives 1.975 (true 2), uniform line gives 1.039 (true 1)
+    fit quality r2: square 0.9997, line 0.9634
+  lorenz done
+  chacha8 done
+  all 20 runs reproduce the published Phase 1 parameter hashes exactly
+
+  PH-dim by condition
+    lorenz   mean 2.2779  sd 0.0781
+    chacha8  mean 2.3100  sd 0.0731
+    Welch t-test (Shapiro-Wilk did not reject normality: p = 0.4169 and 0.0510)
+    statistic -0.946788, p = 0.356338, Cohen's d = -0.4234  ->  H0 not rejected
+
+  Correlation of PH-dim with the Phase 1 generalisation gap, all 20 runs pooled
+    Pearson  r = 0.2140, p = 0.3651
+    Spearman rho = 0.0541, p = 0.8207
+    mean r2 of the log-log fits: 0.9994
+  written results/phase3_phdim.json and results/phase3_comparison.json

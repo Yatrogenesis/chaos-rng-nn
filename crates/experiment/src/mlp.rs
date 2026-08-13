@@ -307,6 +307,19 @@ impl Mlp {
         (loss / n, correct as f64 / n)
     }
 
+    /// The full parameter vector, flattened in a fixed order.
+    ///
+    /// Used by Phase 3, which treats the sequence of these vectors across
+    /// epochs as a point cloud in parameter space.
+    pub fn weight_vector(&self) -> Vec<f64> {
+        let mut v = Vec::new();
+        for layer in self.layers.iter() {
+            v.extend_from_slice(&layer.w);
+            v.extend_from_slice(&layer.b);
+        }
+        v
+    }
+
     /// SHA-256 over every parameter, in a fixed order, as the fingerprint used
     /// to verify bit-for-bit reproducibility between two runs of one
     /// configuration.

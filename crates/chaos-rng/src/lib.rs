@@ -196,6 +196,34 @@ impl LorenzRng {
         (self.next_u64() >> 11) as f64 / (1u64 << 53) as f64
     }
 
+    /// Advances the orbit and returns the raw state, bypassing extraction.
+    ///
+    /// Exposed for the topological analysis of Phase 0.5, which needs the
+    /// attractor itself as a positive control: whatever structure the geometry
+    /// of the Lorenz system carries must be visible here, or the measurement
+    /// pipeline is at fault rather than the extraction.
+    pub fn next_raw_state(&mut self) -> LorenzState {
+        self.advance()
+    }
+
+    /// Advances the orbit and returns the first coordinate scaled by 2^28
+    /// before the fractional part is taken.
+    ///
+    /// This is the first of the three extraction stages that Phase 0.5
+    /// examines separately, so that any loss of structure can be attributed to
+    /// a specific step rather than to the pipeline as a whole.
+    pub fn next_stage_scaled(&mut self) -> f64 {
+        let s = self.advance();
+        s.x * 268_435_456.0
+    }
+
+    /// Advances the orbit and returns the fractional part of the scaled first
+    /// coordinate, the second extraction stage, before mixing.
+    pub fn next_stage_fraction(&mut self) -> f64 {
+        let scaled = self.next_stage_scaled();
+        scaled - scaled.floor()
+    }
+
     /// Returns a standard normal variate by the Box-Muller transform.
     ///
     /// REF: [Box and Muller, 1958] "A Note on the Generation of Random Normal
