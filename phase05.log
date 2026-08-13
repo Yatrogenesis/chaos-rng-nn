@@ -8,4 +8,10 @@ Phase 0.5: topological fingerprint
   stage 2, fractional part           total H1 = 3.8669
   stage 3, after SplitMix64          total H1 = 3.8453
   chacha8 control                    total H1 = 4.5255
-  building the null from 30 uniform clouds ......
+  building the null from 30 uniform clouds ..............................
+  null: mean 3.9191, sd 0.5401
+  empirical p-values against the uniform null:
+    raw attractor  H1 =  37.9419  p = 0.0323
+    lorenz stream  H1 =   3.8453  p = 0.9032
+    chacha8 stream H1 =   4.5255  p = 0.3226
+  written results/phase05_topology.json

@@ -1,6 +1,7 @@
 # Chaos-driven pseudo-randomness against ChaCha8 in neural network training
 
-Status: Phases 0, 0.5, 1 and 3 complete. Phase 2 not executed; see
+Status: Phases 0, 0.5, 1 and 3 complete, including the Phase 0.5 null
+distribution. Phase 2 not executed; see
 [Phase 2](#7-phase-2-not-executed). Sections 1 to 10 describe Phases 0 and 1 and
 are unchanged since they were first published; Phases 0.5 and 3 are added as
 sections 11 and 12.
@@ -241,6 +242,12 @@ final validation loss, validation accuracy or generalisation gap, and was
 **three times slower**. The experiment is a pilot. It does not establish
 equivalence, and it says nothing about behaviour at scale.
 
+Sections 11 and 12, added later, extend that with two further probes: the
+extracted stream carries no detectable topological signature of the attractor
+that produced it, and the training trajectories it drives have the same fractal
+dimension as those driven by the control. Neither changes the conclusion above;
+both narrow the space in which a difference could still be hiding.
+
 ---
 
 ## 11. Phase 0.5: topological fingerprint of the generators
@@ -305,13 +312,19 @@ coordinate scaled by 2^28 are not.
 
 Clouds of 120 points, Rips filtration at twice the median pairwise distance.
 
-| Measurement | Scale | Total finite H1 |
-|---|---|---|
-| Positive control, raw attractor states (x, y, z) | native, tens | 37.94 |
-| Extraction stage 1, coordinate scaled by 2^28 | 2^28 | 9 088 642 394.96 |
-| Extraction stage 2, fractional part | unit interval | 3.8669 |
-| Extraction stage 3, after SplitMix64 | unit interval | 3.8453 |
-| ChaCha8 control | unit interval | 4.5255 |
+The empirical null was built from 30 uniform clouds of the same size and
+dimension: mean total H1 of 3.9191, standard deviation 0.5401, range 2.8355 to
+4.9321. P-values are two sided against that null, with the add-one correction of
+Phipson and Smyth (DOI 10.2202/1544-6115.1585), so the smallest value this
+design can express is 1/31 = 0.0323.
+
+| Measurement | Scale | Total finite H1 | p |
+|---|---|---|---|
+| Positive control, raw attractor states (x, y, z) | native, tens | 37.94 | 0.0323 |
+| Extraction stage 1, coordinate scaled by 2^28 | 2^28 | 9 088 642 394.96 | 0.0323 |
+| Extraction stage 2, fractional part | unit interval | 3.8669 | 0.9032 |
+| Extraction stage 3, after SplitMix64 | unit interval | 3.8453 | 0.9032 |
+| ChaCha8 control | unit interval | 4.5255 | 0.3226 |
 
 The positive control behaves as required: the attractor itself carries
 substantial one dimensional structure, so the measurement pipeline does detect
@@ -326,16 +339,32 @@ mixing step is doing no work here, which is consistent with its stated role as a
 bijection that cannot add entropy. Both sit close to the ChaCha8 control at
 4.5255, on the same side of it.
 
-The empirical null over 30 uniform clouds was still being computed when this
-section was written; the p-values against it are in
-`results/phase05_topology.json` once that run completes, and this table is
-already written from the observed values, which do not change.
+**H0 is not rejected for either generator.** The extracted Lorenz stream sits at
+p = 0.9032, almost exactly at the centre of the null: its total persistence of
+3.8453 is well inside the null's range of 2.8355 to 4.9321 and within a fifth of
+a standard deviation of the null mean. The ChaCha8 control sits at p = 0.3226.
+Neither is distinguishable from uniform noise by this measurement.
+
+The positive control reaches p = 0.0323, which is the floor: no null cloud came
+close, so the observation is as extreme as thirty resamples can express. That is
+the desired behaviour and it is worth stating plainly what it does and does not
+show. It confirms the pipeline detects attractor geometry when that geometry is
+present, which is what makes the null results above informative rather than
+merely uninformative. It does not establish a small p-value in any precise
+sense, because the resolution of the test bottoms out there; a tighter statement
+would need a larger null.
+
+Stage 1 also reaches the floor, but for a reason with no topological content:
+its coordinates are 2^28 times larger than the null's, so its persistence is too,
+and the comparison measures the scale difference rather than any structure. It
+is listed for completeness and should not be read as a finding.
 
 ### Interpretation
 
-Localising the loss of structure to a specific step is the useful result here,
-and it was only visible because the stages were measured separately rather than
-end to end. Whatever geometry the Lorenz orbit carries does not survive the
+H0 stands: the extracted stream carries no detectable topological signature, and
+neither does the control. Localising where the signature disappears is the
+useful result here, and it was only visible because the stages were measured
+separately rather than end to end. Whatever geometry the Lorenz orbit carries does not survive the
 discarding of the high order digits, and the mixer that follows is, on this
 evidence, decorative with respect to topology.
 
