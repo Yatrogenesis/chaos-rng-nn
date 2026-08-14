@@ -1,7 +1,6 @@
 # Chaos-driven pseudo-randomness against ChaCha8 in neural network training
 
-Status: Phases 0, 0.5, 1 and 3 complete, including the Phase 0.5 null
-distribution. Phase 2 not executed; see
+Status: Phases 0, 0.5, 1, 3, 4 and 5 complete. Phase 2 not executed; see
 [Phase 2](#7-phase-2-not-executed). Sections 1 to 10 describe Phases 0 and 1 and
 are unchanged since they were first published; Phases 0.5 and 3 are added as
 sections 11 and 12.
@@ -181,7 +180,7 @@ pseudo-random generator, not a distinctive feature of the chaotic one.
 
 - **Sample size.** N = 10 per condition. Underpowered against small and moderate
   effects, as discussed above.
-- **Scale.** A two-layer MLP with 2178 parameters on a two-dimensional synthetic
+- **Scale.** A two-layer MLP with 1218 parameters on a two-dimensional synthetic
   task. Nothing here supports any claim about larger models, real data, or other
   architectures. Phase 2, which was intended to test that, was not executed.
 - **One task, one architecture, one hyperparameter setting.** No sweep was run;
@@ -376,7 +375,7 @@ find one in the extracted stream.
 ## 12. Phase 3: fractal dimension of the training trajectory
 
 The trajectory of an optimiser through parameter space is a point cloud: one
-vector of 2178 parameters per epoch, sixty of them per run. Birdal et al. show
+vector of 1218 parameters per epoch, sixty of them per run. Birdal et al. show
 that the persistent homology dimension of such a cloud correlates with the
 generalisation gap, on networks much larger than this one. This phase measures
 that dimension for the twenty runs of Phase 1 and asks two questions: whether it
@@ -453,7 +452,7 @@ their claim fails.
 
 The consistency of the estimates is itself worth noting: every one of the twenty
 trajectories, under either generator, has a dimension near 2.3 with a standard
-deviation under 0.08. Whatever the optimiser is doing in a 2178 dimensional
+deviation under 0.08. Whatever the optimiser is doing in a 1218 dimensional
 parameter space, it is confined to something of very low effective dimension,
 and the source of its randomness does not change that.
 
@@ -461,3 +460,326 @@ Limitations: sixty points per trajectory, one architecture, one task, twenty
 runs, and per epoch rather than per iteration sampling. The estimator's
 calibration at this sample size is good on synthetic clouds of known dimension,
 which is evidence that it behaves, not proof that it behaves on trajectories.
+
+## 13. Phase 4: an iterated function system driven by the chaos game
+
+A third family of generator, chosen to be unlike the other two. Lorenz is a
+continuous flow integrated in time; ChaCha8 is a block construction with no
+geometry at all. This one is a discrete attractor whose native geometry is a
+fractal of exactly known, non-integer dimension. That last property is the point
+of including it: it supplies a reference value against which the measurement
+pipeline can be calibrated, which sections 11 and 12 lacked.
+
+Motivation recorded plainly: the Embedding-Manifold-Compression work exploits the
+fact that learned embeddings lie on a low-dimensional fractal manifold. Section
+11 established where a continuous attractor's structure is destroyed during
+extraction. This phase asks the same question of a source whose geometry is
+fractal by construction.
+
+REF: [Barnsley, 1988] "Fractals Everywhere", Academic Press, ISBN
+978-0-12-079062-3, for the chaos game and its convergence to the attractor.
+
+REF: [Grassberger and Procaccia, 1983] "Characterization of Strange Attractors",
+Physical Review Letters 50(5), pp. 346-349, DOI 10.1103/PhysRevLett.50.346, for
+the correlation dimension.
+
+### 4a. The generator and its calibration
+
+The Sierpinski triangle by chaos game: three fixed vertices at (0, 0), (1, 0)
+and (1/2, sqrt(3)/2), an equilateral triangle of unit side; a point starting at
+the centroid; at each step a vertex is chosen and the point moves half way to it.
+
+The randomness that chooses the vertex is a parameter rather than a fixed
+choice, exposed as two variants, one driven by the Lorenz generator and one by
+ChaCha8. Without that separation, any structure found could not be attributed to
+the chaos game rather than inherited from whatever drives it.
+
+Burn-in is 100 iterations, determined for this system rather than copied from
+Lorenz. Each step halves the distance to the attractor, so an initial offset of
+at most one falls below 2^-60 after sixty steps, far under the resolution of a
+double. A test confirms the reasoning numerically: two games driven by identical
+vertex choices from different starting points merge to within 1e-15.
+
+Extraction keeps the principle of the Lorenz extractor and changes two things,
+both forced by the geometry. Kept: harvest digits far below the scale of the
+attractor's motion by scaling and taking the fractional part, then mix through
+the SplitMix64 finaliser. Changed: the scale is 2^36 rather than 2^28, because
+these coordinates live in [0, 1] rather than in the tens; and two coordinates are
+mixed rather than three. Decimation of four iterations per output was added after
+the battery showed a lag-one autocorrelation of 0.0101, just over the threshold,
+which is a real residual correlation: consecutive chaos game points share most of
+their position.
+
+**The blocking calibration.** The correlation dimension of a cloud of 12000
+attractor points, against the theoretical log(3)/log(2):
+
+| Variant | Correlation dimension | Theoretical | Error | Fit r squared |
+|---|---|---|---|---|
+| IFS over Lorenz | 1.582401 | 1.5849625 | 0.0026 | 0.999827 |
+| IFS over ChaCha8 | 1.579283 | 1.5849625 | 0.0057 | 0.999842 |
+
+Both reproduce the theoretical value to within a third of a percent.
+
+**The calibration caught a defect in the estimator, not in the generator.** An
+earlier version placed its radii between the fifth percentile and the median of
+pairwise distances, and returned 1.751 for a uniform square whose true dimension
+is 2, an underestimate of twelve percent, with a fit quality of r squared 0.9997.
+A good fit over the wrong region: near the median the correlation sum approaches
+saturation at one, which flattens the slope. Moving the band to between the 0.1th
+and the 10th percentile removed the bias, and the estimator then recovers 2 for a
+square and 1 for a line, which is what the tests now assert. Without an exact
+reference to check against, that bias would have been invisible and would have
+been reported as a property of the attractor.
+
+**Qualification.** All four generators now pass the Phase 0 battery over one
+million variates:
+
+| Generator | Chi-squared | p | Mean | Variance | Largest abs. autocorrelation |
+|---|---|---|---|---|---|
+| lorenz | 1059.556 | 0.0896 | 0.500009 | 0.083316 | 0.00236 |
+| chacha8 | 1014.616 | 0.3585 | 0.500281 | 0.083191 | 0.00203 |
+| ifs-lorenz | 926.856 | 0.9495 | 0.500518 | 0.083237 | 0.00189 |
+| ifs-chacha8 | 1059.186 | 0.0909 | 0.500107 | 0.083444 | 0.00166 |
+
+The chaos game driven by Lorenz gives the strongest uniformity of the four.
+
+### 4b. Topological fingerprint
+
+The protocol of section 11, applied unchanged, with embedding parameters
+recomputed rather than inherited: average mutual information gives a delay of 5,
+against the 4 found for the Lorenz stream, and the false neighbour criterion
+gives dimension 5. Recomputing mattered for the delay.
+
+| Measurement | Total finite H1 | p against the uniform null |
+|---|---|---|
+| Positive control, raw chaos game points | 0.4723 | 0.0323 |
+| Stage 1, coordinate scaled by 2^36 | 224 010 742 004.26 | 0.0323 |
+| Stage 2, fractional part | 3.4104 | not comparable, see below |
+| Stage 3, IFS over Lorenz | 4.0686 | 0.8710 |
+| Stage 3, IFS over ChaCha8 | 3.9426 | 0.9032 |
+
+Null over 30 uniform clouds: mean 3.8978, standard deviation 0.4106.
+
+**H0 is not rejected for either variant.** Both extracted streams sit near the
+centre of the null, at p = 0.8710 and p = 0.9032. The fractal geometry does not
+survive extraction any better than the continuous attractor's did in section 11.
+
+Two cautions about the table, both about scale. Persistence carries the units of
+the data, so the raw control at 0.4723 cannot be ranked against the Lorenz raw
+control at 37.94 from section 11: the Sierpinski points live in the unit square
+while the Lorenz attractor spans tens of units. The difference is the scale, not
+the amount of structure. For the same reason stage 1, scaled by 2^36, is not
+comparable to anything else here, and its p-value at the floor of 0.0323 measures
+that scale difference rather than any geometry. The raw control also sits in two
+dimensions against a five-dimensional null, so its p-value is not a like-for-like
+comparison either; the meaningful rows are the two stage-3 streams, which share
+both the embedding and the scale of the null.
+
+### 4c. PH-dim across four conditions
+
+The protocol of section 12, with ten runs per variant at seeds 1000 to 1009 and
+the same estimator.
+
+| Condition | PH-dim | Shapiro-Wilk W | p |
+|---|---|---|---|
+| lorenz | 2.2779 ± 0.0781 | 0.9268 | 0.4169 |
+| chacha8 | 2.3100 ± 0.0731 | 0.8452 | 0.0510 |
+| ifs-lorenz | 2.3066 ± 0.0737 | 0.9797 | 0.9637 |
+| ifs-chacha8 | 2.2980 ± 0.0780 | 0.9450 | 0.6099 |
+
+Shapiro-Wilk rejected none of the four, so one-way analysis of variance applies:
+F(3, 36) = 0.3595, p = 0.7826. **H0 is not rejected.** No pairwise comparisons
+were run: performing them after a non-significant omnibus test would inflate the
+error rate for no gain. Had the omnibus been significant, the pairwise tests were
+prepared with Holm correction.
+
+Note that the ChaCha8 sample sits at p = 0.0510, a hair above the threshold that
+would have sent the whole comparison to Kruskal-Wallis.
+
+Correlation of PH-dim with the generalisation gap, now over 40 runs rather than
+20: Pearson r = 0.1954, p = 0.2269; Spearman rho = 0.0884, p = 0.5877. Still
+absent, with double the sample.
+
+### Interpretation
+
+The falsifiable question of 4b was whether a natively fractal geometry, with a
+dimension far from any integer, would resist extraction better than the Lorenz
+attractor's, whose correlation dimension is close to 2. It does not. Both are
+destroyed, and the stage-by-stage measurement puts the loss in the same place:
+taking the fractional part.
+
+Adding a third family changed nothing in 4c either. Four conditions, two of them
+built on a completely different mathematical object, give training trajectories
+of indistinguishable fractal dimension.
+
+The most useful outcome of this phase is methodological rather than empirical.
+Having a source with an exactly known dimension exposed a twelve percent bias in
+the measurement instrument that no relative control would have revealed. That
+bias would have propagated silently into any dimension reported here.
+
+Limitations: one fractal, one dimension of embedding, thirty null resamples, ten
+runs per condition, and the same single architecture and task as every previous
+phase.
+
+## 14. Phase 5: holographic (HRR) against non-holographic (MAP) binding of training trajectories
+
+This phase does not add a generator. It asks whether the specific mathematics of
+holographic binding, circular convolution in the frequency domain, preserves the
+information in a training trajectory better than an equivalent binding that is
+not holographic, when the stored trace is partially destroyed.
+
+REF: [Plate, 1995] "Holographic Reduced Representations", IEEE Transactions on
+Neural Networks 6(3), pp. 623-641, DOI 10.1109/72.377968. Binding by circular
+convolution, computed through the Fourier transform, with unbinding by circular
+correlation against the approximate inverse.
+
+REF: [Gayler, 1998] "Multiplicative Binding, Representation Operators and
+Analogy", https://arxiv.org/abs/cs/0412059. The MAP architecture: binding by
+element-wise multiplication, bundling by addition, no transform.
+
+The transform comes from `yatrosci-fft`, which delegates to a mixed-radix
+implementation for lengths that are not powers of two. That is required here:
+the vectors are 1218 wide, which factors as 2 * 3 * 7 * 29, so a radix-2
+transform would pad, and padding turns circular convolution into linear
+convolution, which breaks unbinding silently.
+
+**A correction to section 12.** That section stated the network has 2178
+parameters. It has 1218: 96 in the first layer, 1056 in the second, 66 in the
+output. The figure has been corrected in place. The error was introduced when
+section 12 was written and did not affect any measurement, since the code always
+took the width from the data; it affected only the prose.
+
+### 5a. Calibration, and two implementation defects it caught
+
+Both schemes were first exercised in the regime they are analysed for:
+independent items drawn from N(0, 1/d), bundled at increasing load.
+
+| Bundled items | HRR fidelity | MAP fidelity |
+|---|---|---|
+| 5 | 0.4399 ± 0.0229 | 0.4501 ± 0.0187 |
+| 15 | 0.2664 ± 0.0216 | 0.2620 ± 0.0320 |
+| 30 | 0.1810 ± 0.0239 | 0.1909 ± 0.0286 |
+| 60 | 0.1311 ± 0.0310 | 0.1293 ± 0.0392 |
+
+The two are indistinguishable in the ideal regime, and both degrade with load as
+crosstalk grows, which is the expected behaviour and the reason the comparison
+in 5c is meaningful rather than a foregone conclusion.
+
+Reaching that table required fixing two defects that the calibration exposed and
+that would otherwise have produced a confident and wrong answer.
+
+**The first was an unfair comparison rather than a coding error.** With Gaussian
+keys, HRR unbinds by the involution, which is only an approximate inverse: the
+round trip multiplies each frequency by |F(k)|^2, an exponential variable of
+mean one rather than the constant one. The retrieval similarity therefore
+converges to E[W]/sqrt(E[W^2]) with W exponential, that is 1/sqrt(2) = 0.7071,
+and does not improve with width. Measured at 0.7272, 0.7196, 0.7051, 0.7037 and
+0.7062 for widths 64, 256, 1024, 2178 and 8192: flat, and on the predicted
+constant. MAP meanwhile unbinds by division, its exact inverse. Comparing an
+approximate inverse against an exact one would have measured that asymmetry
+rather than the property under study. Both schemes now use the key distribution
+they are defined over, unitary for HRR and bipolar for MAP, so each unbinds
+exactly in the noiseless case.
+
+**The second was a genuine implementation error.** MAP with Gaussian keys and
+division scored 0.0200, 0.0084, -0.0027 and 0.0025 across the four loads, which
+is to say it retrieved nothing. The cause is that the crosstalk terms then carry
+ratios of Gaussian variables, which are Cauchy distributed and have no finite
+variance, so the noise has no scale to be small relative to. Bipolar keys, which
+is what MAP is defined over, make multiplication its own exact inverse and bound
+the crosstalk. The blocking gate did its job: without it, this phase would have
+reported that holographic binding beats element-wise binding by an enormous
+margin, and the finding would have been an artefact of using the wrong key
+distribution for one of the two schemes.
+
+### 5b. Real trajectories
+
+Section 12 established that these trajectories have an effective dimension near
+2.3 against 1218 nominal, and that consecutive epochs are strongly correlated
+because the optimiser moves smoothly rather than jumping. That violates the
+near-orthogonality premise under which both schemes are analysed, which is what
+makes their behaviour here an open question.
+
+Sixty epochs bundled into one trace, retrieval measured at epochs 1, 15, 30, 45
+and 60, over the twenty runs of Phase 3.
+
+| Scheme | Fidelity on real trajectories | Synthetic at 60 items |
+|---|---|---|
+| HRR | 0.1565 ± 0.0197 | 0.1311 ± 0.0310 |
+| MAP | 0.1284 ± 0.0309 | 0.1293 ± 0.0392 |
+
+The anticipated collapse did not happen. Fidelity on real trajectories is
+comparable to the synthetic case at the same load, slightly higher for HRR and
+essentially equal for MAP. Whatever the correlation between consecutive epochs
+does to the trace, it does not cost more than independent items of the same
+number. That is a null result against the expectation stated above, and it is
+reported as such rather than quietly dropped.
+
+### 5c. Degradation under corruption
+
+The trace was damaged by erasing a growing fraction of its components, then
+retrieval was attempted. Erasure was chosen over additive noise as the primary
+model for two reasons: it represents loss of stored content, which is the
+failure mode a distributed representation is supposed to tolerate, and it has no
+free scale parameter, so the two schemes cannot be separated by an arbitrary
+choice of noise magnitude.
+
+Mean fidelity across twenty runs and five probe epochs:
+
+| Erased | 10% | 30% | 50% | 70% | 90% |
+|---|---|---|---|---|---|
+| HRR | 0.1477 | 0.1304 | 0.1106 | 0.0848 | 0.0487 |
+| MAP | 0.1220 | 0.1046 | 0.0876 | 0.0603 | 0.0273 |
+
+Area under the degradation curve, one value per run, the pre-registered
+statistic:
+
+| Scheme | AUC |
+|---|---|
+| HRR | 0.084777 ± 0.012719 |
+| MAP | 0.065439 ± 0.018957 |
+
+Shapiro-Wilk did not reject normality for either sample (p = 0.0569 and
+p = 0.8026), so Welch's test applies: t = 3.7884, p = 0.000606,
+Cohen's d = 1.1980. **H0 is rejected** on the pre-registered statistic, in
+favour of HRR.
+
+**That result needs one further step before it can be read as a claim about
+holographic binding.** HRR starts higher at zero corruption, 0.1565 against
+0.1284, so part of the area under its curve is that offset rather than a slower
+decay. Normalising each run's curve by its own uncorrupted fidelity separates
+the two, and the picture changes:
+
+| Scheme | Normalised AUC | Retention at 90% erased |
+|---|---|---|
+| HRR | 0.5413 ± 0.0356 | 0.3131 |
+| MAP | 0.5094 ± 0.0769 | 0.2009 |
+
+Welch on the normalised statistic: t = 1.6871, df = 26.77, p = 0.1032,
+Cohen's d = 0.5335. **Not significant.** This analysis is post hoc: it was
+performed after seeing that the two schemes differed at zero corruption, and it
+is reported as exploratory rather than confirmatory.
+
+### Interpretation
+
+On the pre-registered comparison, holographic binding retains more of the
+trajectory than element-wise binding under erasure, with a large effect. On the
+follow-up that removes the head start, the difference in the shape of the decay
+alone does not reach significance at twenty runs per scheme, though it points
+the same way and the retention at ninety percent erasure differs substantially,
+0.31 against 0.20.
+
+The honest summary is narrower than the headline. HRR is better here, and most
+of the measured advantage is that it retrieves better to begin with on these
+trajectories, not that it decays more gracefully. Whether the residual
+difference in decay is real would need more runs than this design has.
+
+Nothing here supports general claims about holographic representations. It is
+one binding task, on one kind of data, at one width, with one corruption model,
+comparing two specific schemes each given the key distribution it was defined
+over.
+
+Limitations: twenty runs per scheme; a single width; a single corruption model,
+with additive noise implemented but not reported here; probe epochs at five
+fixed positions rather than all sixty; and trajectories from one architecture on
+one task.

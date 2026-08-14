@@ -14,12 +14,23 @@ difference was found on the learning metrics, and the chaotic generator was
 three times slower. Ten runs per condition cannot establish equivalence, only
 fail to detect a difference.
 
+Later phases widened the question without changing that answer. A topological
+probe found no fingerprint of either attractor surviving extraction, and located
+where the structure is lost. A third generator family, an iterated function
+system whose attractor has an exactly known fractal dimension, behaves the same
+and, in the process, exposed a twelve percent bias in the measurement instrument
+that no relative control would have revealed. The fractal dimension of the
+training trajectories is indistinguishable across all four conditions. A separate
+phase compares holographic against element-wise binding of those trajectories
+under corruption, where a difference is found and then largely explained by a
+head start rather than by a slower decay.
+
 ## Layout
 
 ```
-crates/chaos-rng    Lorenz generator, ChaCha8 control, and the qualification battery
-crates/xstats       Welch, Mann-Whitney U, Shapiro-Wilk and the special functions they need
-crates/experiment   Dataset, MLP, run harness, analysis and figures
+crates/chaos-rng    Lorenz generator, ChaCha8 control, the IFS chaos game, and the qualification battery
+crates/xstats       Welch, Mann-Whitney U, Shapiro-Wilk, ANOVA, Kruskal-Wallis, Holm, and the special functions they need
+crates/experiment   Dataset, MLP, run harness, topology, PH-dim, binding schemes, analysis and figures
 assets/fonts        Font vendored for figure rendering, with its licence
 results/            Machine-readable output, committed so the report can be checked
 figures/            Generated plots
@@ -42,8 +53,15 @@ cargo run --release -p experiment -- phase1
 # 3. Hypothesis tests and figures.
 cargo run --release -p experiment -- analyse
 
-# Unit tests, including the Phase 0 battery and the statistical functions
-# checked against published values.
+# Later phases
+cargo run --release -p experiment -- phase05    # topological fingerprint
+cargo run --release -p experiment -- phase3     # trajectory dimension
+cargo run --release -p experiment -- phase4b    # IFS fingerprint
+cargo run --release -p experiment -- phase4c    # four-condition comparison
+cargo run --release -p experiment -- phase5     # holographic binding
+
+# Unit tests, including the Phase 0 battery, the statistical functions checked
+# against published values, and the calibrations that gate each phase.
 cargo test --workspace --release
 ```
 

@@ -29,6 +29,12 @@ plotters = { version = "=0.3.7", default-features = false, features = ["bitmap_b
 sha2 = "=0.11.0"
 tda = "=0.1.0"
 nalgebra = "=0.33.3"
+# The author's own FFT crate, per the reuse preference. It delegates to a
+# mixed-radix implementation for lengths that are not powers of two, which is
+# required here: the vectors are 2178 wide.
+yatrosci-fft = "=0.1.0"
+ndarray = "=0.16.1"
+num-complex = "=0.4.6"
 
 [profile.release]
 opt-level = 3

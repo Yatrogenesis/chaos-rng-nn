@@ -1,0 +1,19 @@
+Phase 4b: topological fingerprint of the IFS generator
+  calibration against the theoretical dimension log(3)/log(2) = 1.5849625
+    ifs-lorenz   D2 = 1.582401, error 0.0026, r2 = 0.999827
+    ifs-chacha8  D2 = 1.579283, error 0.0057, r2 = 0.999842
+  embedding recomputed for the IFS stream: delay 5, dimension 5
+    AMI: [0.0052, 0.0058, 0.0068, 0.0061, 0.0055, 0.0068, 0.006, 0.0055, 0.0057, 0.0049, 0.0059, 0.0055]
+    FNN: [0.9935, 0.687, 0.158, 0.011, 0.0, 0.0, 0.0, 0.0]
+  positive control, raw chaos game points: total H1 = 0.4723
+  stage 1, scaled coordinate         total H1 = 224010742004.2643
+  stage 2, fractional part           total H1 = 3.4104
+  stage 3, ifs over lorenz           total H1 = 4.0686
+  stage 3, ifs over chacha8          total H1 = 3.9426
+  building the null from 30 uniform clouds ..............................
+  null: mean 3.8978, sd 0.4106
+  empirical p-values:
+    raw attractor      H1 =   0.4723  p = 0.0323
+    ifs over lorenz    H1 =   4.0686  p = 0.8710
+    ifs over chacha8   H1 =   3.9426  p = 0.9032
+  written results/phase4b_topology.json

@@ -721,10 +721,346 @@ mod tests {
     }
 
     #[test]
+    fn anova_finds_no_difference_between_identical_groups() {
+        let g = vec![vec![1.0, 2.0, 3.0, 4.0], vec![1.0, 2.0, 3.0, 4.0]];
+        let r = one_way_anova(&g);
+        assert!(r.f.abs() < 1e-12, "F = {}", r.f);
+        assert!((r.p_value - 1.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn anova_matches_a_hand_computed_case() {
+        // Three groups of three, means 2, 5 and 8, each with variance 1.
+        // SS_between = 3*((2-5)^2 + 0 + (8-5)^2) = 54, df 2, MS 27.
+        // SS_within  = 6*1 = 6, df 6, MS 1. So F = 27 exactly.
+        let g = vec![
+            vec![1.0, 2.0, 3.0],
+            vec![4.0, 5.0, 6.0],
+            vec![7.0, 8.0, 9.0],
+        ];
+        let r = one_way_anova(&g);
+        assert!((r.f - 27.0).abs() < 1e-9, "F = {}", r.f);
+        assert!((r.df_between - 2.0).abs() < 1e-12);
+        assert!((r.df_within - 6.0).abs() < 1e-12);
+        assert!(r.p_value < 0.01, "p = {}", r.p_value);
+    }
+
+    #[test]
+    fn anova_and_welch_agree_on_two_groups() {
+        // With two groups of equal size and variance, F must equal t squared.
+        let a = vec![1.0, 2.0, 3.0, 4.0, 5.0];
+        let b = vec![3.0, 4.0, 5.0, 6.0, 7.0];
+        let f = one_way_anova(&[a.clone(), b.clone()]).f;
+        let t = welch_t_test(&a, &b).t;
+        assert!((f - t * t).abs() < 1e-9, "F = {f}, t^2 = {}", t * t);
+    }
+
+    #[test]
+    fn kruskal_wallis_finds_no_difference_between_interleaved_groups() {
+        let g = vec![
+            vec![1.0, 4.0, 7.0, 10.0],
+            vec![2.0, 5.0, 8.0, 11.0],
+            vec![3.0, 6.0, 9.0, 12.0],
+        ];
+        let r = kruskal_wallis(&g);
+        assert!(r.p_value > 0.5, "p = {}", r.p_value);
+    }
+
+    #[test]
+    fn kruskal_wallis_separates_disjoint_groups() {
+        let g = vec![
+            vec![1.0, 2.0, 3.0, 4.0, 5.0],
+            vec![11.0, 12.0, 13.0, 14.0, 15.0],
+            vec![21.0, 22.0, 23.0, 24.0, 25.0],
+        ];
+        let r = kruskal_wallis(&g);
+        assert!((r.degrees_of_freedom - 2.0).abs() < 1e-12);
+        assert!(r.p_value < 0.01, "p = {}", r.p_value);
+    }
+
+    #[test]
+    fn kruskal_wallis_handles_ties() {
+        let g = vec![vec![1.0, 1.0, 2.0], vec![1.0, 2.0, 2.0]];
+        let r = kruskal_wallis(&g);
+        assert!(r.p_value > 0.0 && r.p_value <= 1.0);
+        assert!(r.h.is_finite());
+    }
+
+    #[test]
+    fn holm_matches_its_defining_properties() {
+        let raw = [0.01, 0.04, 0.03, 0.005];
+        let adj = holm_adjust(&raw);
+        // Smallest raw value is multiplied by m, and no adjusted value falls
+        // below the raw one or above one.
+        assert!((adj[3] - 0.02).abs() < 1e-12, "adj = {adj:?}");
+        for (r, a) in raw.iter().zip(adj.iter()) {
+            assert!(*a >= r - 1e-12 && *a <= 1.0);
+        }
+        // Monotone in the order of the raw values.
+        let mut order: Vec<usize> = (0..4).collect();
+        order.sort_by(|&x, &y| raw[x].partial_cmp(&raw[y]).unwrap());
+        for w in order.windows(2) {
+            assert!(adj[w[0]] <= adj[w[1]] + 1e-12);
+        }
+    }
+
+    #[test]
+    fn holm_is_never_more_conservative_than_bonferroni() {
+        let raw = [0.001, 0.02, 0.03, 0.5];
+        let adj = holm_adjust(&raw);
+        for (r, a) in raw.iter().zip(adj.iter()) {
+            assert!(*a <= (raw.len() as f64 * r).min(1.0) + 1e-12);
+        }
+    }
+
+    #[test]
     fn shapiro_wilk_statistic_stays_in_range() {
         let x = [3.0, 1.0, 4.0, 1.0, 5.0, 9.0, 2.0, 6.0, 5.0, 3.0];
         let r = shapiro_wilk(&x);
         assert!(r.w > 0.0 && r.w <= 1.0, "W = {}", r.w);
         assert!(r.p_value >= 0.0 && r.p_value <= 1.0, "p = {}", r.p_value);
     }
+}
+
+// ---------------------------------------------------------------------------
+// Comparisons across more than two groups
+// ---------------------------------------------------------------------------
+
+/// Result of a one-way analysis of variance.
+#[derive(Debug, Clone, Copy)]
+pub struct AnovaResult {
+    /// The F statistic.
+    pub f: f64,
+    /// Degrees of freedom between groups.
+    pub df_between: f64,
+    /// Degrees of freedom within groups.
+    pub df_within: f64,
+    /// Upper-tail probability of F under the null.
+    pub p_value: f64,
+}
+
+/// One-way analysis of variance.
+///
+/// F = (SS_between / df_between) / (SS_within / df_within), and the p-value is
+/// the upper tail of the F distribution, obtained from the regularised
+/// incomplete beta function as
+/// P(F > f) = I_{df2/(df2 + df1 f)}(df2/2, df1/2).
+///
+/// REF: [Fisher, 1925] "Statistical Methods for Research Workers", Oliver and
+///      Boyd. The analysis of variance.
+///      DOI: 10.1007/978-1-4612-4380-9_6 (reprint in Breakthroughs in
+///      Statistics, Springer Series in Statistics)
+pub fn one_way_anova(groups: &[Vec<f64>]) -> AnovaResult {
+    let k = groups.len();
+    assert!(k >= 2, "analysis of variance needs at least two groups");
+    let n_total: usize = groups.iter().map(|g| g.len()).sum();
+    let grand_mean = groups.iter().flatten().sum::<f64>() / n_total as f64;
+
+    let ss_between: f64 = groups
+        .iter()
+        .map(|g| {
+            let d = mean(g) - grand_mean;
+            g.len() as f64 * d * d
+        })
+        .sum();
+    let ss_within: f64 = groups
+        .iter()
+        .map(|g| {
+            let m = mean(g);
+            g.iter().map(|v| (v - m) * (v - m)).sum::<f64>()
+        })
+        .sum();
+
+    let df_between = (k - 1) as f64;
+    let df_within = (n_total - k) as f64;
+    let ms_between = ss_between / df_between;
+    let ms_within = ss_within / df_within;
+
+    if ms_within <= 0.0 {
+        return AnovaResult {
+            f: f64::INFINITY,
+            df_between,
+            df_within,
+            p_value: 0.0,
+        };
+    }
+    let f = ms_between / ms_within;
+    let p = betai(
+        df_within / 2.0,
+        df_between / 2.0,
+        df_within / (df_within + df_between * f),
+    );
+    AnovaResult {
+        f,
+        df_between,
+        df_within,
+        p_value: p,
+    }
+}
+
+/// Result of a Kruskal-Wallis test.
+#[derive(Debug, Clone, Copy)]
+pub struct KruskalWallisResult {
+    /// The H statistic, corrected for ties.
+    pub h: f64,
+    /// Degrees of freedom, groups minus one.
+    pub degrees_of_freedom: f64,
+    /// Upper-tail probability under the chi-squared approximation.
+    pub p_value: f64,
+}
+
+/// Kruskal-Wallis one-way analysis of variance on ranks.
+///
+/// H = 12 / (N(N+1)) * sum_i R_i^2 / n_i - 3(N+1), divided by the tie
+/// correction 1 - sum(t^3 - t) / (N^3 - N). Under the null H follows a
+/// chi-squared distribution with k - 1 degrees of freedom, an approximation
+/// that is adequate when each group has at least five observations.
+///
+/// REF: [Kruskal and Wallis, 1952] "Use of Ranks in One-Criterion Variance
+///      Analysis", Journal of the American Statistical Association 47(260),
+///      pp. 583-621. DOI: 10.1080/01621459.1952.10483441
+pub fn kruskal_wallis(groups: &[Vec<f64>]) -> KruskalWallisResult {
+    assert!(
+        groups.len() >= 2,
+        "Kruskal-Wallis needs at least two groups"
+    );
+
+    let mut pooled: Vec<(f64, usize)> = Vec::new();
+    for (gi, g) in groups.iter().enumerate() {
+        for &v in g {
+            pooled.push((v, gi));
+        }
+    }
+    pooled.sort_by(|a, b| a.0.partial_cmp(&b.0).expect("values must not be NaN"));
+    let n = pooled.len();
+
+    let mut ranks = vec![0.0f64; n];
+    let mut tie_term = 0.0f64;
+    let mut i = 0;
+    while i < n {
+        let mut j = i;
+        while j + 1 < n && pooled[j + 1].0 == pooled[i].0 {
+            j += 1;
+        }
+        let avg = ((i + 1) + (j + 1)) as f64 / 2.0;
+        for r in ranks.iter_mut().take(j + 1).skip(i) {
+            *r = avg;
+        }
+        let t = (j - i + 1) as f64;
+        if t > 1.0 {
+            tie_term += t * t * t - t;
+        }
+        i = j + 1;
+    }
+
+    let n_f = n as f64;
+    let mut sum = 0.0;
+    for (gi, g) in groups.iter().enumerate() {
+        let r_sum: f64 = ranks
+            .iter()
+            .zip(pooled.iter())
+            .filter(|(_, p)| p.1 == gi)
+            .map(|(r, _)| *r)
+            .sum();
+        sum += r_sum * r_sum / g.len() as f64;
+    }
+    let mut h = 12.0 / (n_f * (n_f + 1.0)) * sum - 3.0 * (n_f + 1.0);
+    let correction = 1.0 - tie_term / (n_f * n_f * n_f - n_f);
+    if correction > 0.0 {
+        h /= correction;
+    }
+    let df = (groups.len() - 1) as f64;
+    KruskalWallisResult {
+        h,
+        degrees_of_freedom: df,
+        p_value: chi_squared_sf(h, df),
+    }
+}
+
+/// Upper-tail probability of the chi-squared distribution.
+pub fn chi_squared_sf(statistic: f64, dof: f64) -> f64 {
+    if statistic <= 0.0 {
+        return 1.0;
+    }
+    1.0 - gamma_p(dof / 2.0, statistic / 2.0)
+}
+
+/// Regularised lower incomplete gamma function P(a, x).
+///
+/// REF: [Abramowitz and Stegun, 1964] "Handbook of Mathematical Functions",
+///      equations 6.5.29 and 6.5.31, National Bureau of Standards Applied
+///      Mathematics Series 55.
+fn gamma_p(a: f64, x: f64) -> f64 {
+    if x < 0.0 || a <= 0.0 {
+        return f64::NAN;
+    }
+    if x == 0.0 {
+        return 0.0;
+    }
+    if x < a + 1.0 {
+        let mut ap = a;
+        let mut sum = 1.0 / a;
+        let mut del = sum;
+        for _ in 0..1000 {
+            ap += 1.0;
+            del *= x / ap;
+            sum += del;
+            if del.abs() < sum.abs() * 1e-15 {
+                break;
+            }
+        }
+        sum * (-x + a * x.ln() - ln_gamma(a)).exp()
+    } else {
+        let tiny = 1e-300;
+        let mut b = x + 1.0 - a;
+        let mut c = 1.0 / tiny;
+        let mut d = 1.0 / b;
+        let mut h = d;
+        for i in 1..1000 {
+            let an = -(i as f64) * (i as f64 - a);
+            b += 2.0;
+            d = an * d + b;
+            if d.abs() < tiny {
+                d = tiny;
+            }
+            c = b + an / c;
+            if c.abs() < tiny {
+                c = tiny;
+            }
+            d = 1.0 / d;
+            let del = d * c;
+            h *= del;
+            if (del - 1.0).abs() < 1e-15 {
+                break;
+            }
+        }
+        1.0 - (-x + a * x.ln() - ln_gamma(a)).exp() * h
+    }
+}
+
+/// Adjusts a family of p-values by the Holm step-down procedure.
+///
+/// Holm controls the family-wise error rate under any dependence structure and
+/// is uniformly more powerful than Bonferroni, which it contains as its first
+/// step. Returns the adjusted values in the order the inputs were given, so a
+/// caller can compare each against the original alpha.
+///
+/// REF: [Holm, 1979] "A Simple Sequentially Rejective Multiple Test Procedure",
+///      Scandinavian Journal of Statistics 6(2), pp. 65-70
+///      https://www.jstor.org/stable/4615733
+pub fn holm_adjust(p_values: &[f64]) -> Vec<f64> {
+    let m = p_values.len();
+    let mut idx: Vec<usize> = (0..m).collect();
+    idx.sort_by(|&a, &b| p_values[a].partial_cmp(&p_values[b]).expect("finite"));
+
+    let mut adjusted = vec![0.0f64; m];
+    let mut running = 0.0f64;
+    for (rank, &i) in idx.iter().enumerate() {
+        let scaled = ((m - rank) as f64 * p_values[i]).min(1.0);
+        // Enforce monotonicity: an adjusted value can never fall below one
+        // already assigned to a smaller raw p-value.
+        running = running.max(scaled);
+        adjusted[i] = running;
+    }
+    adjusted
 }

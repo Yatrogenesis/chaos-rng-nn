@@ -16,6 +16,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod ifs;
 pub mod stats;
 
 /// Classical parameters placing the Lorenz system in its chaotic regime, with a
@@ -373,6 +374,10 @@ pub enum Rng {
     Lorenz(LorenzRng),
     /// ChaCha8 generator, the control condition.
     ChaCha(ChaChaRng),
+    /// Chaos game driven by the Lorenz generator.
+    IfsLorenz(crate::ifs::IfsRng<LorenzRng>),
+    /// Chaos game driven by ChaCha8.
+    IfsChaCha(crate::ifs::IfsRng<ChaChaRng>),
 }
 
 /// Which generator a condition uses.
@@ -382,6 +387,10 @@ pub enum RngKind {
     Lorenz,
     /// ChaCha8 generator.
     ChaCha,
+    /// Chaos game over the Sierpinski triangle, driven by the Lorenz generator.
+    IfsLorenz,
+    /// Chaos game over the Sierpinski triangle, driven by ChaCha8.
+    IfsChaCha,
 }
 
 impl RngKind {
@@ -390,6 +399,8 @@ impl RngKind {
         match self {
             RngKind::Lorenz => "lorenz",
             RngKind::ChaCha => "chacha8",
+            RngKind::IfsLorenz => "ifs-lorenz",
+            RngKind::IfsChaCha => "ifs-chacha8",
         }
     }
 }
@@ -400,6 +411,12 @@ impl Rng {
         match kind {
             RngKind::Lorenz => Rng::Lorenz(LorenzRng::from_seed(seed)),
             RngKind::ChaCha => Rng::ChaCha(ChaChaRng::from_seed(seed)),
+            RngKind::IfsLorenz => {
+                Rng::IfsLorenz(crate::ifs::IfsRng::new(LorenzRng::from_seed(seed)))
+            }
+            RngKind::IfsChaCha => {
+                Rng::IfsChaCha(crate::ifs::IfsRng::new(ChaChaRng::from_seed(seed)))
+            }
         }
     }
 
@@ -408,6 +425,8 @@ impl Rng {
         match self {
             Rng::Lorenz(r) => r.next_u64(),
             Rng::ChaCha(r) => r.next_u64(),
+            Rng::IfsLorenz(r) => r.next_u64(),
+            Rng::IfsChaCha(r) => r.next_u64(),
         }
     }
 
@@ -416,6 +435,8 @@ impl Rng {
         match self {
             Rng::Lorenz(r) => r.next_f64(),
             Rng::ChaCha(r) => r.next_f64(),
+            Rng::IfsLorenz(r) => r.next_f64(),
+            Rng::IfsChaCha(r) => r.next_f64(),
         }
     }
 
@@ -424,6 +445,16 @@ impl Rng {
         match self {
             Rng::Lorenz(r) => r.next_normal(),
             Rng::ChaCha(r) => r.next_normal(),
+            // The IFS variants reuse the same Box-Muller construction so that
+            // every condition differs only in its bit source.
+            Rng::IfsLorenz(_) | Rng::IfsChaCha(_) => {
+                let mut u1 = self.next_f64();
+                while u1 <= f64::MIN_POSITIVE {
+                    u1 = self.next_f64();
+                }
+                let u2 = self.next_f64();
+                (-2.0 * u1.ln()).sqrt() * (std::f64::consts::TAU * u2).cos()
+            }
         }
     }
 
@@ -432,6 +463,22 @@ impl Rng {
         match self {
             Rng::Lorenz(r) => r.next_below(n),
             Rng::ChaCha(r) => r.next_below(n),
+            // Same Lemire rejection method, expressed over next_u64.
+            Rng::IfsLorenz(_) | Rng::IfsChaCha(_) => {
+                assert!(n > 0, "upper bound must be positive");
+                let mut x = self.next_u64();
+                let mut m = (x as u128) * (n as u128);
+                let mut l = m as u64;
+                if l < n {
+                    let threshold = n.wrapping_neg() % n;
+                    while l < threshold {
+                        x = self.next_u64();
+                        m = (x as u128) * (n as u128);
+                        l = m as u64;
+                    }
+                }
+                (m >> 64) as u64
+            }
         }
     }
 
@@ -440,6 +487,13 @@ impl Rng {
         match self {
             Rng::Lorenz(r) => r.shuffle(items),
             Rng::ChaCha(r) => r.shuffle(items),
+            // Same Fisher-Yates, expressed over next_below.
+            Rng::IfsLorenz(_) | Rng::IfsChaCha(_) => {
+                for i in (1..items.len()).rev() {
+                    let j = self.next_below(i as u64 + 1) as usize;
+                    items.swap(i, j);
+                }
+            }
         }
     }
 }

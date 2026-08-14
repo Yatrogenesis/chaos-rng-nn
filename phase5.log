@@ -1,0 +1,32 @@
+  weight vector width taken from the data: 1218
+Phase 5: holographic (HRR) against element-wise (MAP) binding
+
+  5a. calibration on independent Gaussian items, width 1218
+    hrr    5 items: fidelity 0.4399 +/- 0.0229
+    hrr   15 items: fidelity 0.2664 +/- 0.0216
+    hrr   30 items: fidelity 0.1810 +/- 0.0239
+    hrr   60 items: fidelity 0.1311 +/- 0.0310
+    map    5 items: fidelity 0.4501 +/- 0.0187
+    map   15 items: fidelity 0.2620 +/- 0.0320
+    map   30 items: fidelity 0.1909 +/- 0.0286
+    map   60 items: fidelity 0.1293 +/- 0.0392
+
+  5b and 5c. real trajectories, 20 runs
+    lorenz   done
+    chacha8  done
+
+  5b. retrieval without corruption, mean over 5 probe epochs
+    hrr  fidelity 0.1565 +/- 0.0197  over 20 runs
+    map  fidelity 0.1284 +/- 0.0309  over 20 runs
+
+  5c. degradation under erasure
+    level              10%        30%        50%        70%        90%
+    hrr             0.1477     0.1304     0.1106     0.0848     0.0487
+    map             0.1220     0.1046     0.0876     0.0603     0.0273
+
+  area under the degradation curve, per run
+    hrr  0.084777 +/- 0.012719
+    map  0.065439 +/- 0.018957
+    Welch t-test (Shapiro-Wilk did not reject normality: p = 0.0569 and 0.8026)
+    statistic 3.788427, p = 0.000606, Cohen's d = 1.1980  ->  H0 REJECTED
+  written results/phase5_binding.json

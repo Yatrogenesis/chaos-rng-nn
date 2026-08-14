@@ -18,3 +18,6 @@ sha2 = { workspace = true }
 plotters = { workspace = true }
 tda = { workspace = true }
 nalgebra = { workspace = true }
+yatrosci-fft = { workspace = true }
+ndarray = { workspace = true }
+num-complex = { workspace = true }

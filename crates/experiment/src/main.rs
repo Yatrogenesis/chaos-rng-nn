@@ -7,6 +7,7 @@
 //!   experiment analyse  read the results and apply the hypothesis tests
 
 mod analysis;
+mod binding;
 mod dataset;
 mod mlp;
 mod phdim;
@@ -59,7 +60,12 @@ fn phase0() -> std::io::Result<()> {
     println!("Phase 0: generator qualification, {BATTERY_SAMPLES} samples, {BATTERY_BINS} bins");
     let mut summaries = Vec::new();
 
-    for kind in [RngKind::Lorenz, RngKind::ChaCha] {
+    for kind in [
+        RngKind::Lorenz,
+        RngKind::ChaCha,
+        RngKind::IfsLorenz,
+        RngKind::IfsChaCha,
+    ] {
         let samples: Vec<f64> = match kind {
             RngKind::Lorenz => {
                 let mut r = LorenzRng::from_seed(DATASET_SEED);
@@ -67,6 +73,12 @@ fn phase0() -> std::io::Result<()> {
             }
             RngKind::ChaCha => {
                 let mut r = ChaChaRng::from_seed(DATASET_SEED);
+                (0..BATTERY_SAMPLES).map(|_| r.next_f64()).collect()
+            }
+            // The IFS variants qualify through the same battery, run from the
+            // shared Rng wrapper so the code path is identical.
+            other => {
+                let mut r = chaos_rng::Rng::new(other, DATASET_SEED);
                 (0..BATTERY_SAMPLES).map(|_| r.next_f64()).collect()
             }
         };
@@ -678,6 +690,566 @@ fn phase3() -> std::io::Result<()> {
     Ok(())
 }
 
+/// Phase 4b: does the chaos game's fractal geometry survive extraction?
+fn phase4b() -> std::io::Result<()> {
+    use chaos_rng::ifs::{correlation_dimension, IfsRng, SIERPINSKI_DIMENSION};
+    use nalgebra::DMatrix;
+    use topology::*;
+
+    const SERIES: usize = 20_000;
+    const CLOUD: usize = 12_000;
+
+    println!("Phase 4b: topological fingerprint of the IFS generator");
+
+    // 4a calibration, reported here with real numbers rather than only asserted
+    // in a test, because the report needs them.
+    println!(
+        "  calibration against the theoretical dimension log(3)/log(2) = {SIERPINSKI_DIMENSION:.7}"
+    );
+    for (label, kind) in [
+        ("ifs-lorenz", RngKind::IfsLorenz),
+        ("ifs-chacha8", RngKind::IfsChaCha),
+    ] {
+        let pts: Vec<chaos_rng::ifs::Point2> = match kind {
+            RngKind::IfsLorenz => {
+                let mut g = IfsRng::new(LorenzRng::from_seed(DATASET_SEED));
+                (0..CLOUD).map(|_| g.next_raw_point()).collect()
+            }
+            _ => {
+                let mut g = IfsRng::new(ChaChaRng::from_seed(DATASET_SEED));
+                (0..CLOUD).map(|_| g.next_raw_point()).collect()
+            }
+        };
+        let d = correlation_dimension(&pts, 40);
+        println!(
+            "    {label:<12} D2 = {:.6}, error {:.4}, r2 = {:.6}",
+            d.dimension,
+            (d.dimension - SIERPINSKI_DIMENSION).abs(),
+            d.r_squared
+        );
+    }
+
+    // Streams, per variant and per extraction stage.
+    let mut lz = IfsRng::new(LorenzRng::from_seed(DATASET_SEED));
+    let ifs_lorenz: Vec<f64> = (0..SERIES).map(|_| lz.next_f64()).collect();
+    let mut cc = IfsRng::new(ChaChaRng::from_seed(DATASET_SEED));
+    let ifs_chacha: Vec<f64> = (0..SERIES).map(|_| cc.next_f64()).collect();
+
+    // Embedding parameters recomputed for this generator rather than inherited.
+    let params = choose_embedding(&ifs_lorenz, 12, 8);
+    println!(
+        "  embedding recomputed for the IFS stream: delay {}, dimension {}",
+        params.delay, params.dimension
+    );
+    println!(
+        "    AMI: {:?}",
+        params
+            .ami_curve
+            .iter()
+            .map(|v| (v * 1e4).round() / 1e4)
+            .collect::<Vec<_>>()
+    );
+    println!(
+        "    FNN: {:?}",
+        params
+            .fnn_curve
+            .iter()
+            .map(|v| (v * 1e4).round() / 1e4)
+            .collect::<Vec<_>>()
+    );
+
+    let mut rows: Vec<TopologyRow> = Vec::new();
+
+    // Positive control: the raw attractor, whose dimension is known exactly.
+    let raw: DMatrix<f64> = {
+        let mut g = IfsRng::new(LorenzRng::from_seed(DATASET_SEED));
+        let mut data = Vec::with_capacity(CLOUD_POINTS * 2);
+        for _ in 0..CLOUD_POINTS {
+            let p = g.next_raw_point();
+            data.push(p.x);
+            data.push(p.y);
+        }
+        DMatrix::from_row_slice(CLOUD_POINTS, 2, &data)
+    };
+    let raw_r = adaptive_radius(&raw);
+    let raw_h1 = total_h1_persistence(&raw, raw_r);
+    println!("  positive control, raw chaos game points: total H1 = {raw_h1:.4}");
+    rows.push(TopologyRow {
+        label: "ifs_raw_points_xy".into(),
+        points: CLOUD_POINTS,
+        dimension: 2,
+        delay: 0,
+        radius: raw_r,
+        total_h1: raw_h1,
+        p_value: None,
+    });
+
+    let stage_scaled: Vec<f64> = {
+        let mut g = IfsRng::new(LorenzRng::from_seed(DATASET_SEED));
+        (0..SERIES).map(|_| g.next_stage_scaled()).collect()
+    };
+    let stage_fraction: Vec<f64> = {
+        let mut g = IfsRng::new(LorenzRng::from_seed(DATASET_SEED));
+        (0..SERIES).map(|_| g.next_stage_fraction()).collect()
+    };
+
+    let measure = |label: &str, series: &[f64], rows: &mut Vec<TopologyRow>| -> f64 {
+        let cloud = takens_embedding(series, params.dimension, params.delay, CLOUD_POINTS);
+        let radius = adaptive_radius(&cloud);
+        let h1 = total_h1_persistence(&cloud, radius);
+        println!("  {label:<34} total H1 = {h1:.4}");
+        rows.push(TopologyRow {
+            label: label.into(),
+            points: CLOUD_POINTS,
+            dimension: params.dimension,
+            delay: params.delay,
+            radius,
+            total_h1: h1,
+            p_value: None,
+        });
+        h1
+    };
+
+    measure("stage 1, scaled coordinate", &stage_scaled, &mut rows);
+    measure("stage 2, fractional part", &stage_fraction, &mut rows);
+    let h_lorenz = measure("stage 3, ifs over lorenz", &ifs_lorenz, &mut rows);
+    let h_chacha = measure("stage 3, ifs over chacha8", &ifs_chacha, &mut rows);
+
+    // Null of the same shape as the clouds measured above.
+    print!("  building the null from {NULL_RESAMPLES} uniform clouds ");
+    std::io::stdout().flush()?;
+    let mut null = Vec::with_capacity(NULL_RESAMPLES);
+    for k in 0..NULL_RESAMPLES {
+        let mut r = ChaChaRng::from_seed(950_000 + k as u64);
+        let n = CLOUD_POINTS * params.dimension;
+        let data: Vec<f64> = (0..n).map(|_| r.next_f64()).collect();
+        let cloud = DMatrix::from_row_slice(CLOUD_POINTS, params.dimension, &data);
+        let radius = adaptive_radius(&cloud);
+        null.push(total_h1_persistence(&cloud, radius));
+        print!(".");
+        std::io::stdout().flush()?;
+    }
+    println!();
+    println!(
+        "  null: mean {:.4}, sd {:.4}",
+        xstats::mean(&null),
+        xstats::std_dev(&null)
+    );
+    println!("  empirical p-values:");
+    println!(
+        "    raw attractor      H1 = {raw_h1:8.4}  p = {:.4}",
+        empirical_p_value(raw_h1, &null)
+    );
+    println!(
+        "    ifs over lorenz    H1 = {h_lorenz:8.4}  p = {:.4}",
+        empirical_p_value(h_lorenz, &null)
+    );
+    println!(
+        "    ifs over chacha8   H1 = {h_chacha:8.4}  p = {:.4}",
+        empirical_p_value(h_chacha, &null)
+    );
+
+    for row in rows.iter_mut() {
+        row.p_value = Some(empirical_p_value(row.total_h1, &null));
+    }
+
+    #[derive(serde::Serialize)]
+    struct Phase4b {
+        embedding: EmbeddingParams,
+        rows: Vec<TopologyRow>,
+        null_values: Vec<f64>,
+        null_mean: f64,
+        null_std_dev: f64,
+    }
+    std::fs::create_dir_all("results")?;
+    std::fs::write(
+        "results/phase4b_topology.json",
+        serde_json::to_string_pretty(&Phase4b {
+            embedding: params,
+            rows,
+            null_mean: xstats::mean(&null),
+            null_std_dev: xstats::std_dev(&null),
+            null_values: null,
+        })
+        .expect("serialisable"),
+    )?;
+    println!("  written results/phase4b_topology.json");
+    Ok(())
+}
+
+/// Phase 4c: PH-dim across all four conditions.
+fn phase4c() -> std::io::Result<()> {
+    use chaos_rng::Rng;
+
+    let cfg = Config::default();
+    let data = make_moons(N_SAMPLES, NOISE, DATASET_SEED);
+    let (train, val) = train_test_split(&data, TRAIN_FRACTION, SPLIT_SEED);
+    let seeds: Vec<u64> = (0..N_RUNS as u64).map(|i| 1_000 + i).collect();
+    let sizes = [15usize, 20, 30, 40, 50, 60];
+
+    println!("Phase 4c: PH-dim of the training trajectory, four conditions");
+
+    #[derive(serde::Serialize, serde::Deserialize, Clone)]
+    struct Row {
+        rng: String,
+        seed: u64,
+        ph_dimension: f64,
+        r_squared: f64,
+        generalisation_gap: f64,
+        final_val_loss: f64,
+    }
+
+    // The two original conditions are read from Phase 3 rather than recomputed,
+    // so the comparison uses exactly the numbers already reported.
+    let mut rows: Vec<Row> = {
+        let raw = std::fs::read_to_string("results/phase3_phdim.json")?;
+        let prior: Vec<serde_json::Value> =
+            serde_json::from_str(&raw).expect("phase 3 results are present");
+        prior
+            .iter()
+            .map(|v| Row {
+                rng: v["rng"].as_str().expect("rng").to_string(),
+                seed: v["seed"].as_u64().expect("seed"),
+                ph_dimension: v["ph_dimension"].as_f64().expect("dimension"),
+                r_squared: v["r_squared"].as_f64().expect("r2"),
+                generalisation_gap: v["generalisation_gap"].as_f64().expect("gap"),
+                final_val_loss: v["final_val_loss"].as_f64().expect("loss"),
+            })
+            .collect()
+    };
+    println!("  loaded {} runs from Phase 3", rows.len());
+
+    for kind in [RngKind::IfsLorenz, RngKind::IfsChaCha] {
+        print!("  running {:<12} ", kind.as_str());
+        std::io::stdout().flush()?;
+        for &seed in seeds.iter() {
+            let (record, snapshots) =
+                runner::run_once_with_snapshots(kind, seed, &train, &val, cfg);
+            let mut est_rng = Rng::new(chaos_rng::RngKind::ChaCha, 31_337);
+            let est = phdim::estimate(&snapshots, &sizes, 20, &mut est_rng);
+            rows.push(Row {
+                rng: record.rng.clone(),
+                seed,
+                ph_dimension: est.dimension,
+                r_squared: est.r_squared,
+                generalisation_gap: record.generalisation_gap,
+                final_val_loss: record.final_val_loss,
+            });
+        }
+        println!("done");
+    }
+
+    let names = ["lorenz", "chacha8", "ifs-lorenz", "ifs-chacha8"];
+    let group = |n: &str| -> Vec<f64> {
+        rows.iter()
+            .filter(|r| r.rng == n)
+            .map(|r| r.ph_dimension)
+            .collect()
+    };
+    let groups: Vec<Vec<f64>> = names.iter().map(|n| group(n)).collect();
+
+    println!();
+    println!("  PH-dim by condition");
+    let mut all_normal = true;
+    for (n, g) in names.iter().zip(groups.iter()) {
+        let sw = xstats::shapiro_wilk(g);
+        if sw.p_value <= analysis::ALPHA {
+            all_normal = false;
+        }
+        println!(
+            "    {n:<12} mean {:.4}  sd {:.4}  Shapiro-Wilk W = {:.4}, p = {:.4}",
+            xstats::mean(g),
+            xstats::std_dev(g),
+            sw.w,
+            sw.p_value
+        );
+    }
+
+    println!();
+    let omnibus_p = if all_normal {
+        let a = xstats::one_way_anova(&groups);
+        println!(
+            "  One-way ANOVA (Shapiro-Wilk rejected none of the four): F({}, {}) = {:.4}, p = {:.4}",
+            a.df_between, a.df_within, a.f, a.p_value
+        );
+        a.p_value
+    } else {
+        let k = xstats::kruskal_wallis(&groups);
+        println!(
+            "  Kruskal-Wallis (Shapiro-Wilk rejected at least one sample): H = {:.4}, df = {}, p = {:.4}",
+            k.h, k.degrees_of_freedom, k.p_value
+        );
+        k.p_value
+    };
+
+    if omnibus_p < analysis::ALPHA {
+        println!("  omnibus test is significant; pairwise comparisons follow, Holm corrected");
+        let mut labels = Vec::new();
+        let mut raw_p = Vec::new();
+        for i in 0..names.len() {
+            for j in (i + 1)..names.len() {
+                let p = if all_normal {
+                    xstats::welch_t_test(&groups[i], &groups[j]).p_value
+                } else {
+                    xstats::mann_whitney_u(&groups[i], &groups[j]).p_value
+                };
+                labels.push(format!("{} vs {}", names[i], names[j]));
+                raw_p.push(p);
+            }
+        }
+        let adj = xstats::holm_adjust(&raw_p);
+        for ((l, r), a) in labels.iter().zip(raw_p.iter()).zip(adj.iter()) {
+            println!("    {l:<28} raw p = {r:.4}, Holm adjusted = {a:.4}");
+        }
+    } else {
+        println!(
+            "  omnibus test is not significant at alpha = {}; no pairwise comparisons are made,",
+            analysis::ALPHA
+        );
+        println!("  since running them anyway would inflate the error rate for no reason");
+    }
+
+    let dims: Vec<f64> = rows.iter().map(|r| r.ph_dimension).collect();
+    let gaps: Vec<f64> = rows.iter().map(|r| r.generalisation_gap).collect();
+    let rp = phdim::pearson(&dims, &gaps);
+    let rs = phdim::spearman(&dims, &gaps);
+    println!();
+    println!(
+        "  Correlation of PH-dim with the generalisation gap, all {} runs pooled",
+        rows.len()
+    );
+    println!(
+        "    Pearson  r = {:.4}, p = {:.4}",
+        rp,
+        phdim::correlation_p_value(rp, dims.len())
+    );
+    println!(
+        "    Spearman rho = {:.4}, p = {:.4}",
+        rs,
+        phdim::correlation_p_value(rs, dims.len())
+    );
+
+    std::fs::create_dir_all("results")?;
+    std::fs::write(
+        "results/phase4c_phdim.json",
+        serde_json::to_string_pretty(&rows).expect("serialisable"),
+    )?;
+    println!("  written results/phase4c_phdim.json");
+    Ok(())
+}
+
+/// Phase 5: holographic against non-holographic binding.
+fn phase5() -> std::io::Result<()> {
+    use binding::*;
+    use chaos_rng::Rng;
+
+    let cfg = Config::default();
+    let data = make_moons(N_SAMPLES, NOISE, DATASET_SEED);
+    let (train, val) = train_test_split(&data, TRAIN_FRACTION, SPLIT_SEED);
+    let seeds: Vec<u64> = (0..N_RUNS as u64).map(|i| 1_000 + i).collect();
+    // Width taken from the data rather than assumed. The network has 1218
+    // parameters: 96 in the first layer, 1056 in the second, 66 in the output.
+    let d_width = {
+        let (_, s) = runner::run_once_with_snapshots(
+            RngKind::ChaCha,
+            seeds[0],
+            &train,
+            &val,
+            Config { epochs: 1, ..cfg },
+        );
+        s[0].len()
+    };
+    println!("  weight vector width taken from the data: {d_width}");
+    let d = d_width;
+    let probes = [0usize, 14, 29, 44, 59]; // epochs 1, 15, 30, 45, 60
+    let levels = [0.1f64, 0.3, 0.5, 0.7, 0.9];
+
+    println!("Phase 5: holographic (HRR) against element-wise (MAP) binding");
+
+    // 5a: calibration in the regime both schemes are analysed for.
+    println!();
+    println!("  5a. calibration on independent Gaussian items, width {d}");
+    let counts = [5usize, 15, 30, 60];
+    let mut calib = Vec::new();
+    for scheme in [Scheme::Hrr, Scheme::Map] {
+        let mut rng = Rng::new(chaos_rng::RngKind::ChaCha, 5_000);
+        let pts = calibrate_unitary(scheme, d, &counts, 3, &mut rng);
+        for c in pts.iter() {
+            println!(
+                "    {:<4} {:>3} items: fidelity {:.4} +/- {:.4}",
+                c.scheme, c.items, c.mean_fidelity, c.std_dev
+            );
+        }
+        calib.extend(pts);
+    }
+
+    // 5b and 5c over the real trajectories.
+    #[derive(serde::Serialize)]
+    struct RunResult {
+        rng: String,
+        seed: u64,
+        scheme: String,
+        clean_fidelity: f64,
+        fidelity_by_level: Vec<f64>,
+        auc: f64,
+    }
+    let mut results: Vec<RunResult> = Vec::new();
+
+    println!();
+    println!("  5b and 5c. real trajectories, {} runs", 2 * N_RUNS);
+    for kind in [RngKind::Lorenz, RngKind::ChaCha] {
+        print!("    {:<8} ", kind.as_str());
+        std::io::stdout().flush()?;
+        for &seed in seeds.iter() {
+            // Snapshots are regenerated rather than stored: the run is
+            // deterministic, so this reproduces exactly the trajectory Phase 3
+            // measured, which the Phase 3 guard already established.
+            let (_, snapshots) = runner::run_once_with_snapshots(kind, seed, &train, &val, cfg);
+            let n = snapshots.len();
+
+            for scheme in [Scheme::Hrr, Scheme::Map] {
+                // Unitary keys for both schemes, so each unbinds exactly in the
+                // noiseless case and the comparison isolates the binding.
+                let mut key_rng = Rng::new(chaos_rng::RngKind::ChaCha, 7_000 + seed);
+                let keys: Vec<Vec<f64>> = (0..n)
+                    .map(|_| match scheme {
+                        Scheme::Hrr => make_unitary_key(d, &mut key_rng),
+                        Scheme::Map => make_bipolar_key(d, &mut key_rng),
+                    })
+                    .collect();
+                let trace = bundle(scheme, &keys, &snapshots);
+
+                let clean: f64 = {
+                    let v: Vec<f64> = probes
+                        .iter()
+                        .map(|&p| {
+                            let got = retrieve(scheme, &keys[p], &trace);
+                            cosine_similarity(&got, &snapshots[p])
+                        })
+                        .collect();
+                    xstats::mean(&v)
+                };
+
+                let mut by_level = Vec::with_capacity(levels.len());
+                for &f in levels.iter() {
+                    let mut c_rng = Rng::new(chaos_rng::RngKind::ChaCha, 8_000 + seed);
+                    let damaged = corrupt(&trace, Corruption::Erase, f, &mut c_rng);
+                    let v: Vec<f64> = probes
+                        .iter()
+                        .map(|&p| {
+                            let got = retrieve(scheme, &keys[p], &damaged);
+                            cosine_similarity(&got, &snapshots[p])
+                        })
+                        .collect();
+                    by_level.push(xstats::mean(&v));
+                }
+                // Area under the degradation curve by the trapezium rule over
+                // the corrupted fraction, a single number per run and scheme.
+                let mut auc = 0.0;
+                for w in 0..levels.len() - 1 {
+                    auc += 0.5 * (by_level[w] + by_level[w + 1]) * (levels[w + 1] - levels[w]);
+                }
+                results.push(RunResult {
+                    rng: kind.as_str().to_string(),
+                    seed,
+                    scheme: scheme.as_str().to_string(),
+                    clean_fidelity: clean,
+                    fidelity_by_level: by_level,
+                    auc,
+                });
+            }
+        }
+        println!("done");
+    }
+
+    let pick = |s: &str, f: fn(&RunResult) -> f64| -> Vec<f64> {
+        results.iter().filter(|r| r.scheme == s).map(f).collect()
+    };
+
+    println!();
+    println!("  5b. retrieval without corruption, mean over 5 probe epochs");
+    for s in ["hrr", "map"] {
+        let v = pick(s, |r| r.clean_fidelity);
+        println!(
+            "    {s:<4} fidelity {:.4} +/- {:.4}  over {} runs",
+            xstats::mean(&v),
+            xstats::std_dev(&v),
+            v.len()
+        );
+    }
+
+    println!();
+    println!("  5c. degradation under erasure");
+    print!("    level      ");
+    for f in levels.iter() {
+        print!("{:>10.0}%", f * 100.0);
+    }
+    println!();
+    for s in ["hrr", "map"] {
+        print!("    {s:<10} ");
+        for i in 0..levels.len() {
+            let v: Vec<f64> = results
+                .iter()
+                .filter(|r| r.scheme == s)
+                .map(|r| r.fidelity_by_level[i])
+                .collect();
+            print!("{:>11.4}", xstats::mean(&v));
+        }
+        println!();
+    }
+
+    let hrr_auc = pick("hrr", |r| r.auc);
+    let map_auc = pick("map", |r| r.auc);
+    println!();
+    println!("  area under the degradation curve, per run");
+    println!(
+        "    hrr  {:.6} +/- {:.6}",
+        xstats::mean(&hrr_auc),
+        xstats::std_dev(&hrr_auc)
+    );
+    println!(
+        "    map  {:.6} +/- {:.6}",
+        xstats::mean(&map_auc),
+        xstats::std_dev(&map_auc)
+    );
+    let cmp = analysis::compare("degradation_auc", &hrr_auc, &map_auc);
+    println!("    {}", cmp.test_used);
+    println!(
+        "    statistic {:.6}, p = {:.6}, Cohen's d = {:.4}  ->  {}",
+        cmp.statistic,
+        cmp.p_value,
+        cmp.cohens_d,
+        if cmp.rejects_h0 {
+            "H0 REJECTED"
+        } else {
+            "H0 not rejected"
+        }
+    );
+
+    #[derive(serde::Serialize)]
+    struct Phase5 {
+        calibration: Vec<CalibrationPoint>,
+        corruption_levels: Vec<f64>,
+        probe_epochs: Vec<usize>,
+        runs: Vec<RunResult>,
+        comparison: analysis::Comparison,
+    }
+    std::fs::create_dir_all("results")?;
+    std::fs::write(
+        "results/phase5_binding.json",
+        serde_json::to_string_pretty(&Phase5 {
+            calibration: calib,
+            corruption_levels: levels.to_vec(),
+            probe_epochs: probes.iter().map(|p| p + 1).collect(),
+            runs: results,
+            comparison: cmp,
+        })
+        .expect("serialisable"),
+    )?;
+    println!("  written results/phase5_binding.json");
+    Ok(())
+}
+
 fn main() -> std::io::Result<()> {
     let arg = std::env::args().nth(1).unwrap_or_default();
     match arg.as_str() {
@@ -686,6 +1258,9 @@ fn main() -> std::io::Result<()> {
         "analyse" => analyse(),
         "phase05" => phase05(),
         "phase3" => phase3(),
+        "phase4b" => phase4b(),
+        "phase4c" => phase4c(),
+        "phase5" => phase5(),
         other => {
             eprintln!("unknown command {other:?}; expected phase0, phase1 or analyse");
             std::process::exit(2);
