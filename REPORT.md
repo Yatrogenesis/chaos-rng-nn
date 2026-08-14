@@ -1,6 +1,6 @@
 # Chaos-driven pseudo-randomness against ChaCha8 in neural network training
 
-Status: Phases 0, 0.5, 1, 3, 4, 5, 6 and 7 complete. Phase 2 not executed; see
+Status: Phases 0, 0.5, 1, 3, 4, 5, 6, 7 and 8 complete. Phase 2 not executed; see
 [Phase 2](#7-phase-2-not-executed). Sections 1 to 10 describe Phases 0 and 1 and
 are unchanged since they were first published; Phases 0.5 and 3 are added as
 sections 11 and 12.
@@ -1088,3 +1088,164 @@ which is weaker than "the theorem's hypotheses are met".
 And the classification of the third category happens outside the engine, so it
 is a claim about what the engine failed to prove rather than a proof of a
 negative.
+
+## 17. Phase 8: reservoir computing with the validated generators as fixed reservoir weights (not SGD)
+
+This phase is a change of paradigm, not an eighth attempt at the question the
+first seven closed. Phases 1 through 7 asked whether the source of randomness
+matters inside stochastic gradient descent and answered no, from converging
+directions: no empirical effect on learning, on trajectory dimension, on the
+four-condition comparison or on the superposed spectrum, and no formal channel
+at all for one of the generators. The reason that question kept coming back
+negative is structural. Under backpropagation the drawn weights are a starting
+point, and training walks away from them; whatever geometry the generator wrote
+into the initial matrix is overwritten by the first few thousand updates.
+
+Reservoir computing removes that escape. The recurrent dynamics are drawn once
+and never trained, and only a linear readout is fitted, in closed form by ridge
+regression. The drawn weights are not an initial condition here; they are the
+computation, applied unchanged at every timestep for the life of the network. If
+the structure of a generator's stream can matter anywhere in machine learning,
+this is a paradigm where it has somewhere to matter.
+
+REF: [Jaeger, 2001] "The 'echo state' approach to analysing and training
+recurrent neural networks", GMD Report 148, German National Research Center for
+Information Technology.
+REF: [Maass, Natschlaeger and Markram, 2002] "Real-time computing without stable
+states", Neural Computation 14(11), pp. 2531-2560,
+DOI 10.1162/089976602760407955.
+REF: [Jaeger and Haas, 2004] "Harnessing nonlinearity: predicting chaotic
+systems and saving energy in wireless communication", Science 304(5667),
+pp. 78-80, DOI 10.1126/science.1091277.
+
+The architecture is the canonical one: `x(t+1) = tanh(W_res x(t) + W_in u(t))`
+with a linear readout, a reservoir of 100 units, spectral radius 0.9, input
+scaling 0.1, dense recurrent matrix, and a washout of 1000 steps. The matrix is
+dense rather than sparse, and that is a decision worth stating: sparsity would
+be a second variable, and it would also decide how much of the generator's
+stream ever reached the matrix. Dense means every one of the ten thousand
+entries comes from the stream in order, which gives whatever structure the
+generator carries the largest possible surface. The input matrix is drawn from
+the reference source in all five conditions, so the recurrent matrix is the only
+thing that varies.
+
+### 8a. The canonical reservoir, before any generator is used
+
+Three predictions of the theory were checked first, as a blocking gate, on a
+reservoir built entirely from the reference generator.
+
+| Spectral radius | Memory capacity | MC/N |
+|---|---|---|
+| 0.50 | 14.639 | 0.146 |
+| 0.90 | 32.642 | 0.326 |
+| 0.99 | 36.169 | 0.362 |
+
+Memory capacity stays well under the reservoir size, which is the theoretical
+ceiling, and rises as the spectral radius approaches one, which is what slower
+forgetting predicts. The ceiling check is not decorative: measuring the
+correlations in sample rather than on held-out data inflates each of the two
+hundred delays by roughly `(n+1)/T`, and the easiest way to produce a capacity
+above the ceiling is exactly that mistake. The readouts here are evaluated on a
+segment they never saw.
+
+On NARMA-10, using the published recursion rather than any task invented here,
+the canonical reservoir reaches a test NRMSE of 0.3527, inside the band the
+reservoir literature reports for a hundred-unit reservoir. All three gates
+passed, and only then were the generators introduced.
+
+### 8b. The echo state property, for all five conditions
+
+The property was verified numerically rather than inferred from the spectral
+radius, which is a rule of thumb and neither necessary nor sufficient. Two
+different initial states were driven by the same input and their separation
+measured after two thousand steps.
+
+Every condition holds it, in every one of the twenty instances, with a worst
+final separation of 4.5e-16 across the whole experiment: the trajectories merge
+to the last bit of double precision. No condition had to be excluded, so the
+comparison that follows runs on all five.
+
+The spectral radius of the raw fill, before rescaling, is worth recording as a
+property of the sources in its own right. It sits at 6.07 for the reference and
+between 6.03 and 6.13 for the four generators, each with a standard deviation
+near 0.2, so all five agree within their own spread. The circular law puts the
+asymptotic value at `sqrt(N/3) = 5.77` for entries uniform on this range, and
+the measured excess is the finite-size behaviour expected at N = 100. No
+generator produced a matrix with an anomalous spectrum.
+
+### 8c. Comparison
+
+Twenty reservoir instances per condition, each condition seeing an identical
+driving input at each instance. Shapiro-Wilk passed on all five samples for both
+metrics, so Welch was used throughout, with Holm across the four comparisons.
+
+Memory capacity, omnibus one-way ANOVA F = 0.7337, p = 0.5712:
+
+| Condition | Mean MC | Welch p | Holm p | d |
+|---|---|---|---|---|
+| standard-iid | 32.559 | | | |
+| lorenz | 32.583 | 0.9660 | 0.9660 | -0.014 |
+| chacha8 | 31.683 | 0.2373 | 0.9490 | 0.380 |
+| ifs-lorenz | 31.763 | 0.3016 | 0.9490 | 0.332 |
+| ifs-chacha8 | 31.904 | 0.3159 | 0.9490 | 0.321 |
+
+NARMA-10 test NRMSE, omnibus one-way ANOVA F = 0.0390, p = 0.9971:
+
+| Condition | Mean NRMSE | Welch p | Holm p | d |
+|---|---|---|---|---|
+| standard-iid | 0.3583 | | | |
+| lorenz | 0.3567 | 0.8293 | 1.0000 | 0.069 |
+| chacha8 | 0.3583 | 0.9991 | 1.0000 | -0.000 |
+| ifs-lorenz | 0.3571 | 0.8807 | 1.0000 | 0.048 |
+| ifs-chacha8 | 0.3593 | 0.9000 | 1.0000 | -0.040 |
+
+H0 is not rejected on either metric, by any comparison, before or after
+correction.
+
+### What makes this null informative, and what does not
+
+A p-value above a threshold is weak evidence on its own, so two things are
+reported alongside it.
+
+The first is the design's resolution. With twenty instances per condition this
+comparison can detect a standardised effect of about 0.89 at eighty percent
+power, and about 1.06 at the most stringent level the Holm correction imposes.
+Effects smaller than that would not have been seen. The figure comes from the
+normal approximation to the two-sample t-test, which errs in the direction that
+flatters the design by roughly three percent, so the true resolution floor is a
+little worse than stated. This experiment therefore rules out large effects, not
+small ones.
+
+The second is more useful. The chacha8 condition differs from the reference
+baseline in nothing but the ChaCha round count, eight against twelve, so it is a
+negative control: whatever it registers is what this design produces when
+nothing of substance differs. On memory capacity it registered d = 0.380, the
+**largest** of the four effects, larger than either chaos-game family and far
+larger than Lorenz at d = -0.014. An effect of that size arose here from a
+change that cannot matter. That is a within-experiment demonstration of the
+noise scale, and it places all four generators at or below it.
+
+On NARMA-10 the control happened to land at d = -0.000, the smallest of the
+four. That is one realisation and calibrates nothing; it is reported so the two
+metrics are not read as if the control behaved the same way in both.
+
+### Limitations
+
+One architecture, one reservoir size, one spectral radius, one input scaling.
+Reservoir performance is known to depend on all of these, and the possibility
+that a difference exists at some other operating point is untested.
+
+Two tasks, both standard and both chosen for comparability with the literature,
+neither chosen because a chaotic reservoir would be expected to do well on it.
+A task designed to reward the specific structure of these generators was not
+attempted, and would be a different kind of experiment.
+
+The spectral radius is equalised across conditions and everything else about the
+matrix, including its density of large entries and any correlation between
+entries, is left as the generator produced it. That is the intended design, but
+it means "the source does not matter" is established only after that one
+normalisation. A comparison without it would be a comparison of spectral radii.
+
+Twenty instances per condition, with the resolution floor stated above. Failing
+to detect a difference is not the same as establishing equivalence, which is the
+same caveat that has applied since Phase 1 and applies here unchanged.

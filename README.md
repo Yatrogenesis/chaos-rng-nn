@@ -32,12 +32,21 @@ satisfies the hypotheses of neither the classical nor the random formula. That
 does not invalidate the measurements, which stand as geometry, but it does bound
 how they may be read, and the report says so retroactively.
 
+A last phase changes paradigm rather than repeating the question. In reservoir
+computing the recurrent weights are never trained, so a generator's structure
+stays in the matrix that does the computing instead of being overwritten by
+gradient descent. It does not matter there either, on memory capacity or on
+NARMA-10. What makes that null worth stating is a negative control: a condition
+differing from the baseline only in the ChaCha round count moved memory capacity
+more than any real change of generator did.
+
 ## Layout
 
 ```
 crates/chaos-rng    Lorenz generator, ChaCha8 control, the IFS chaos game, and the qualification battery
 crates/xstats       Welch, Mann-Whitney U, Shapiro-Wilk, ANOVA, Kruskal-Wallis, Holm, and the special functions they need
 crates/experiment   Dataset, MLP, run harness, topology, PH-dim, binding schemes, analysis and figures
+crates/reservoir    Echo state networks whose fixed weights come from the generators, trained by ridge regression
 crates/kirs-pilot   Which Pesin-type formula applies to each generator, by Horn resolution (outside the workspace, see its README)
 assets/fonts        Font vendored for figure rendering, with its licence
 results/            Machine-readable output, committed so the report can be checked
@@ -68,6 +77,8 @@ cargo run --release -p experiment -- phase4b    # IFS fingerprint
 cargo run --release -p experiment -- phase4c    # four-condition comparison
 cargo run --release -p experiment -- phase5     # holographic binding
 cargo run --release -p experiment -- phase6     # spectrum of the superposed operator
+
+cargo run --release -p reservoir --bin phase8   # reservoir computing, ridge readout
 
 # Phase 7 is built separately because it depends on an external read-only
 # reference. See crates/kirs-pilot/README.md.

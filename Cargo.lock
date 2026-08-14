@@ -637,6 +637,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "reservoir"
+version = "0.1.0"
+dependencies = [
+ "chaos-rng",
+ "nalgebra",
+ "rand_chacha",
+ "serde",
+ "serde_json",
+ "xstats",
+]
+
+[[package]]
 name = "rustfft"
 version = "6.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

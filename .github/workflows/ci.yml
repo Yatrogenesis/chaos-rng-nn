@@ -32,6 +32,13 @@ jobs:
       - name: Phase 0 gate
         run: cargo run --release -p experiment -- phase0
 
+      # Phase 8 exits non-zero if the reservoir calibration fails, and the
+      # committed results must reproduce byte for byte from the seeds.
+      - name: Phase 8 gate and reproducibility
+        run: |
+          cargo run --release -p reservoir --bin phase8
+          git diff --exit-code results/phase8_reservoir.json
+
   # Phase 7 depends on an external read-only reference, so it is verified in its
   # own job. The reference is cloned at a pinned commit and never modified; the
   # final step asserts that, so that a change to it would fail the build rather

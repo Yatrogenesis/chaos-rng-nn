@@ -1,0 +1,20 @@
+[package]
+name = "reservoir"
+description = "Phase 8: echo state networks whose fixed reservoir weights are drawn from the validated generators, trained by ridge regression rather than by gradient descent"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+chaos-rng = { workspace = true }
+xstats = { workspace = true }
+nalgebra = { workspace = true }
+rand_chacha = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+[lints.rust]
+missing_docs = "warn"
