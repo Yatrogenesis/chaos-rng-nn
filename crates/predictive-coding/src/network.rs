@@ -286,6 +286,47 @@ impl Network {
         }
     }
 
+    /// Applies an accumulated update with a per-layer multiplier on the step.
+    ///
+    /// [`Self::apply`] is left exactly as it was rather than delegating here,
+    /// so that Phase 9's published numbers cannot move by so much as a bit
+    /// through a refactor of a function they depend on.
+    pub fn apply_scaled(&mut self, dw: &[Matrix], db: &[Vec<f64>], count: usize, gate: &[f64]) {
+        assert_eq!(gate.len(), self.depth(), "one multiplier per weight matrix");
+        let base = self.cfg.learning_rate / count as f64;
+        for l in 0..self.depth() {
+            let step = base * gate[l];
+            for (v, d) in self.w[l].data.iter_mut().zip(dw[l].data.iter()) {
+                *v += step * d;
+            }
+            for (v, d) in self.b[l].iter_mut().zip(db[l].iter()) {
+                *v += step * d;
+            }
+        }
+    }
+
+    /// The configuration this network was built with.
+    pub fn config(&self) -> &Config {
+        &self.cfg
+    }
+
+    /// Value-node activations of one layer over a set of inputs.
+    ///
+    /// Rows are nodes, columns are inputs. This is the quantity Phase 10 takes
+    /// the correlation structure of, and it is produced by a plain feedforward
+    /// pass so that probing never disturbs the training state.
+    pub fn layer_activations(&self, inputs: &[[f64; 2]], layer: usize) -> Vec<Vec<f64>> {
+        let mut inf = self.new_inference();
+        let mut out = vec![Vec::with_capacity(inputs.len()); self.cfg.layers[layer]];
+        for input in inputs {
+            self.feedforward(input, &mut inf);
+            for (node, row) in out.iter_mut().enumerate() {
+                row.push(inf.x[layer][node]);
+            }
+        }
+        out
+    }
+
     /// Zeroed accumulators shaped like the parameters.
     pub fn zero_accumulators(&self) -> (Vec<Matrix>, Vec<Vec<f64>>) {
         let dw = self

@@ -47,6 +47,16 @@ reaching a correlation of 0.92 once the inference settles. Modulating the
 precision weighting with each generator changes neither the validation loss nor
 the generalisation gap.
 
+A final phase tests two ideas taken from the author's own drafts, reusing the
+mathematics and none of the unverifiable results those drafts report. One of the
+two turns out to be wrong as written: the topological measure ranks pure noise
+above every structured case, because the term it sums over dimension zero is the
+weight of the minimum spanning tree and is largest when nothing is clustered.
+Restricted to the dimensions where it works, it has no effect on learning. The
+second, a learning rate graded across the hierarchy, does have a large effect,
+and it is negative: it starves the early layer, and the harm scales with how
+widely the rates are spread.
+
 ## Layout
 
 ```
@@ -55,6 +65,7 @@ crates/xstats       Welch, Mann-Whitney U, Shapiro-Wilk, ANOVA, Kruskal-Wallis, 
 crates/experiment   Dataset, MLP, run harness, topology, PH-dim, binding schemes, analysis and figures
 crates/reservoir    Echo state networks whose fixed weights come from the generators, trained by ridge regression
 crates/predictive-coding  Predictive coding network, local Hebbian updates, precision modulated by the generators
+crates/topo-plasticity    Topological resilience and graded plasticity over the Phase 9 network, as hypotheses
 crates/kirs-pilot   Which Pesin-type formula applies to each generator, by Horn resolution (outside the workspace, see its README)
 assets/fonts        Font vendored for figure rendering, with its licence
 results/            Machine-readable output, committed so the report can be checked
@@ -88,6 +99,7 @@ cargo run --release -p experiment -- phase6     # spectrum of the superposed ope
 
 cargo run --release -p reservoir --bin phase8   # reservoir computing, ridge readout
 cargo run --release -p predictive-coding --bin phase9   # predictive coding, precision modulation
+cargo run --release -p topo-plasticity --bin phase10    # topological resilience, graded plasticity
 
 # Phase 7 is built separately because it depends on an external read-only
 # reference. See crates/kirs-pilot/README.md.

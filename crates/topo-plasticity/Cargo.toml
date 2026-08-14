@@ -1,0 +1,22 @@
+[package]
+name = "topo-plasticity"
+description = "Phase 10: topological resilience and graded plasticity as design hypotheses over the Phase 9 predictive coding network"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+predictive-coding = { workspace = true }
+experiment = { workspace = true }
+chaos-rng = { workspace = true }
+xstats = { workspace = true }
+tda = { workspace = true }
+nalgebra = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+[lints.rust]
+missing_docs = "warn"

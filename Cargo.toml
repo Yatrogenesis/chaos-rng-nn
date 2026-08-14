@@ -6,6 +6,7 @@ members = [
     "crates/experiment",
     "crates/reservoir",
     "crates/predictive-coding",
+    "crates/topo-plasticity",
 ]
 
 # kirs-pilot is deliberately not a member. It depends by path on a separate
@@ -33,6 +34,7 @@ chaos-rng = { path = "crates/chaos-rng" }
 xstats = { path = "crates/xstats" }
 reservoir = { path = "crates/reservoir" }
 experiment = { path = "crates/experiment" }
+predictive-coding = { path = "crates/predictive-coding" }
 rand = "=0.9.5"
 rand_chacha = "=0.10.0"
 serde = { version = "=1.0.229", features = ["derive"] }

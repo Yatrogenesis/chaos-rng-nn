@@ -857,6 +857,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "topo-plasticity"
+version = "0.1.0"
+dependencies = [
+ "chaos-rng",
+ "experiment",
+ "nalgebra",
+ "predictive-coding",
+ "serde",
+ "serde_json",
+ "tda",
+ "xstats",
+]
+
+[[package]]
 name = "transpose"
 version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
