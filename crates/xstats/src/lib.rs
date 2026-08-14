@@ -721,6 +721,89 @@ mod tests {
     }
 
     #[test]
+    fn wilcoxon_finds_no_difference_between_identical_samples() {
+        let a = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0];
+        let r = wilcoxon_signed_rank(&a, &a);
+        assert_eq!(r.n_used, 0);
+        assert!((r.p_value - 1.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn wilcoxon_detects_a_consistent_shift() {
+        let a: Vec<f64> = (1..=12).map(|i| i as f64).collect();
+        let b: Vec<f64> = a.iter().map(|v| v + 3.0).collect();
+        let r = wilcoxon_signed_rank(&a, &b);
+        // Every difference has the same sign, so one rank sum is zero.
+        assert!((r.w - 0.0).abs() < 1e-12, "W = {}", r.w);
+        assert!(r.p_value < 0.01, "p = {}", r.p_value);
+    }
+
+    #[test]
+    fn wilcoxon_matches_a_hand_computed_case() {
+        // Differences 1, -2, 3, -4, 5 have absolute ranks 1..5. Negative ranks
+        // are those of -2 and -4, that is 2 and 4, summing to 6; positive sum
+        // is 9. W is the smaller, 6.
+        let a = [1.0, 0.0, 3.0, 0.0, 5.0];
+        let b = [0.0, 2.0, 0.0, 4.0, 0.0];
+        let r = wilcoxon_signed_rank(&a, &b);
+        assert_eq!(r.n_used, 5);
+        assert!((r.w - 6.0).abs() < 1e-12, "W = {}", r.w);
+    }
+
+    #[test]
+    fn paired_t_agrees_with_wilcoxon_on_a_clear_shift() {
+        let a: Vec<f64> = (1..=15).map(|i| i as f64).collect();
+        let b: Vec<f64> = a.iter().map(|v| v + 2.0).collect();
+        assert!(paired_t_test(&a, &b).p_value < 1e-9);
+        assert!(wilcoxon_signed_rank(&a, &b).p_value < 0.01);
+    }
+
+    #[test]
+    fn semicircle_cdf_matches_its_defining_values() {
+        assert!((semicircle_cdf(-2.0) - 0.0).abs() < 1e-12);
+        assert!((semicircle_cdf(0.0) - 0.5).abs() < 1e-12);
+        assert!((semicircle_cdf(2.0) - 1.0).abs() < 1e-12);
+        // Monotone.
+        let mut prev = 0.0;
+        for i in 0..=40 {
+            let x = -2.0 + 4.0 * i as f64 / 40.0;
+            let v = semicircle_cdf(x);
+            assert!(v >= prev - 1e-12, "not monotone at {x}");
+            prev = v;
+        }
+    }
+
+    #[test]
+    fn ks_accepts_a_sample_from_the_reference_and_rejects_a_shifted_one() {
+        // Inverse-transform a uniform grid through the semicircle law, which
+        // gives a sample that follows it by construction.
+        let n = 400;
+        let mut good = Vec::with_capacity(n);
+        for i in 0..n {
+            let target = (i as f64 + 0.5) / n as f64;
+            let (mut lo, mut hi) = (-2.0f64, 2.0f64);
+            for _ in 0..60 {
+                let mid = 0.5 * (lo + hi);
+                if semicircle_cdf(mid) < target {
+                    lo = mid;
+                } else {
+                    hi = mid;
+                }
+            }
+            good.push(0.5 * (lo + hi));
+        }
+        let (_, p_good) = ks_test(&good, semicircle_cdf);
+        assert!(
+            p_good > 0.05,
+            "a conforming sample was rejected, p = {p_good}"
+        );
+
+        let shifted: Vec<f64> = good.iter().map(|v| v * 0.5 + 0.8).collect();
+        let (_, p_bad) = ks_test(&shifted, semicircle_cdf);
+        assert!(p_bad < 0.01, "a shifted sample was accepted, p = {p_bad}");
+    }
+
+    #[test]
     fn anova_finds_no_difference_between_identical_groups() {
         let g = vec![vec![1.0, 2.0, 3.0, 4.0], vec![1.0, 2.0, 3.0, 4.0]];
         let r = one_way_anova(&g);
@@ -1063,4 +1146,192 @@ pub fn holm_adjust(p_values: &[f64]) -> Vec<f64> {
         adjusted[i] = running;
     }
     adjusted
+}
+
+// ---------------------------------------------------------------------------
+// Paired comparisons
+// ---------------------------------------------------------------------------
+
+/// Result of a Wilcoxon signed-rank test.
+#[derive(Debug, Clone, Copy)]
+pub struct WilcoxonResult {
+    /// The W statistic, the smaller of the two signed rank sums.
+    pub w: f64,
+    /// Number of non-zero differences actually used.
+    pub n_used: usize,
+    /// Two-sided p-value from the normal approximation with continuity and tie
+    /// corrections.
+    pub p_value: f64,
+}
+
+/// Wilcoxon signed-rank test for paired samples.
+///
+/// Differences of zero are discarded, the remainder are ranked by absolute
+/// value with ties receiving average ranks, and the statistic is the smaller of
+/// the positive and negative rank sums. The p-value uses the normal
+/// approximation
+/// z = (|W - n(n+1)/4| - 0.5) / sqrt(n(n+1)(2n+1)/24 - tie correction),
+/// which is adequate from about ten pairs upward.
+///
+/// REF: [Wilcoxon, 1945] "Individual Comparisons by Ranking Methods",
+///      Biometrics Bulletin 1(6), pp. 80-83
+///      DOI: 10.2307/3001968
+pub fn wilcoxon_signed_rank(a: &[f64], b: &[f64]) -> WilcoxonResult {
+    assert_eq!(a.len(), b.len(), "a paired test needs equal lengths");
+    let diffs: Vec<f64> = a
+        .iter()
+        .zip(b.iter())
+        .map(|(x, y)| x - y)
+        .filter(|d| *d != 0.0)
+        .collect();
+    let n = diffs.len();
+    if n == 0 {
+        return WilcoxonResult {
+            w: 0.0,
+            n_used: 0,
+            p_value: 1.0,
+        };
+    }
+
+    let mut order: Vec<usize> = (0..n).collect();
+    order.sort_by(|&i, &j| {
+        diffs[i]
+            .abs()
+            .partial_cmp(&diffs[j].abs())
+            .expect("differences must not be NaN")
+    });
+
+    let mut ranks = vec![0.0f64; n];
+    let mut tie_term = 0.0f64;
+    let mut i = 0;
+    while i < n {
+        let mut j = i;
+        while j + 1 < n && diffs[order[j + 1]].abs() == diffs[order[i]].abs() {
+            j += 1;
+        }
+        let avg = ((i + 1) + (j + 1)) as f64 / 2.0;
+        for k in i..=j {
+            ranks[order[k]] = avg;
+        }
+        let t = (j - i + 1) as f64;
+        if t > 1.0 {
+            tie_term += t * t * t - t;
+        }
+        i = j + 1;
+    }
+
+    let w_pos: f64 = diffs
+        .iter()
+        .zip(ranks.iter())
+        .filter(|(d, _)| **d > 0.0)
+        .map(|(_, r)| *r)
+        .sum();
+    let w_neg: f64 = diffs
+        .iter()
+        .zip(ranks.iter())
+        .filter(|(d, _)| **d < 0.0)
+        .map(|(_, r)| *r)
+        .sum();
+    let w = w_pos.min(w_neg);
+
+    let n_f = n as f64;
+    let mean = n_f * (n_f + 1.0) / 4.0;
+    let var = n_f * (n_f + 1.0) * (2.0 * n_f + 1.0) / 24.0 - tie_term / 48.0;
+    if var <= 0.0 {
+        return WilcoxonResult {
+            w,
+            n_used: n,
+            p_value: 1.0,
+        };
+    }
+    let z = ((w - mean).abs() - 0.5) / var.sqrt();
+    WilcoxonResult {
+        w,
+        n_used: n,
+        p_value: (2.0 * (1.0 - normal_cdf(z))).min(1.0),
+    }
+}
+
+/// Result of a paired t-test.
+#[derive(Debug, Clone, Copy)]
+pub struct PairedTResult {
+    /// The t statistic of the differences.
+    pub t: f64,
+    /// Degrees of freedom, pairs minus one.
+    pub df: f64,
+    /// Two-sided p-value.
+    pub p_value: f64,
+}
+
+/// Paired t-test: a one-sample test on the differences against zero.
+pub fn paired_t_test(a: &[f64], b: &[f64]) -> PairedTResult {
+    assert_eq!(a.len(), b.len(), "a paired test needs equal lengths");
+    let d: Vec<f64> = a.iter().zip(b.iter()).map(|(x, y)| x - y).collect();
+    let n = d.len() as f64;
+    let m = mean(&d);
+    let s = std_dev(&d);
+    if s == 0.0 {
+        return PairedTResult {
+            t: if m == 0.0 { 0.0 } else { f64::INFINITY },
+            df: n - 1.0,
+            p_value: if m == 0.0 { 1.0 } else { 0.0 },
+        };
+    }
+    let t = m / (s / n.sqrt());
+    let df = n - 1.0;
+    PairedTResult {
+        t,
+        df,
+        p_value: betai(df / 2.0, 0.5, df / (df + t * t)),
+    }
+}
+
+/// Kolmogorov-Smirnov statistic of a sample against a given distribution
+/// function, with the asymptotic p-value.
+///
+/// D = sup_x |F_n(x) - F(x)|, and the p-value uses the Kolmogorov limiting
+/// distribution with the Stephens correction for finite samples.
+///
+/// REF: [Massey, 1951] "The Kolmogorov-Smirnov Test for Goodness of Fit",
+///      Journal of the American Statistical Association 46(253), pp. 68-78
+///      DOI: 10.1080/01621459.1951.10500769
+pub fn ks_test<F: Fn(f64) -> f64>(sample: &[f64], cdf: F) -> (f64, f64) {
+    let mut s = sample.to_vec();
+    s.sort_by(|a, b| a.partial_cmp(b).expect("sample must not contain NaN"));
+    let n = s.len() as f64;
+    let mut d: f64 = 0.0;
+    for (i, x) in s.iter().enumerate() {
+        let f = cdf(*x);
+        let lo = i as f64 / n;
+        let hi = (i + 1) as f64 / n;
+        d = d.max((f - lo).abs()).max((hi - f).abs());
+    }
+    // Stephens' modification, then the limiting series.
+    let en = n.sqrt();
+    let lambda = (en + 0.12 + 0.11 / en) * d;
+    let mut p = 0.0;
+    for k in 1..=100 {
+        let kf = k as f64;
+        p += 2.0 * (-1.0f64).powi(k - 1) * (-2.0 * kf * kf * lambda * lambda).exp();
+    }
+    (d, p.clamp(0.0, 1.0))
+}
+
+/// Cumulative distribution function of the Wigner semicircle law on [-2, 2],
+/// the reference against which the spectra of Phase 6 are compared.
+///
+/// F(x) = 1/2 + x sqrt(4 - x^2) / (4 pi) + arcsin(x/2) / pi
+///
+/// REF: [Wigner, 1958] "On the Distribution of the Roots of Certain Symmetric
+///      Matrices", Annals of Mathematics 67(2), pp. 325-327
+///      DOI: 10.2307/1970008
+pub fn semicircle_cdf(x: f64) -> f64 {
+    if x <= -2.0 {
+        return 0.0;
+    }
+    if x >= 2.0 {
+        return 1.0;
+    }
+    0.5 + x * (4.0 - x * x).sqrt() / (4.0 * std::f64::consts::PI)
+        + (x / 2.0).asin() / std::f64::consts::PI
 }

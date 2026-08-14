@@ -1,0 +1,25 @@
+Phase 6: spectrum of the superposed HRR + IFS + TDA operator
+
+  6a. calibration at size 60, the real scale
+    real superposition       gap 0.6184, KS p 0.0273
+    naive null, three GOE    gap 0.0054, KS p 1.0000
+    corrected null, |GOE|    gap 0.5217, KS p 0.9985
+    real over naive: 114.6x   real over corrected: 1.19x
+
+  6b and 6c. forty real runs
+    lorenz       done
+    chacha8      done
+    ifs-lorenz   done
+    ifs-chacha8  done
+
+  6c. spectral gap, real against the corrected null, 40 paired runs
+    real   0.597332 +/- 0.002576
+    null   0.546146 +/- 0.003078
+    paired difference 0.051187 +/- 0.003522
+    Shapiro-Wilk on the differences: W = 0.9666, p = 0.2784
+    paired t-test: t = 91.9249, df = 39, p = 0.000000  ->  H0 REJECTED
+
+  6d. relation to the generalisation gap, 40 runs
+    spectral gap of M          Pearson r =  0.1608 (p = 0.3216),  Spearman rho =  0.1480 (p = 0.3620)
+    difference from the null   Pearson r =  0.1927 (p = 0.2336),  Spearman rho =  0.1529 (p = 0.3462)
+  written results/phase6_spectrum.json

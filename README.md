@@ -59,6 +59,7 @@ cargo run --release -p experiment -- phase3     # trajectory dimension
 cargo run --release -p experiment -- phase4b    # IFS fingerprint
 cargo run --release -p experiment -- phase4c    # four-condition comparison
 cargo run --release -p experiment -- phase5     # holographic binding
+cargo run --release -p experiment -- phase6     # spectrum of the superposed operator
 
 # Unit tests, including the Phase 0 battery, the statistical functions checked
 # against published values, and the calibrations that gate each phase.

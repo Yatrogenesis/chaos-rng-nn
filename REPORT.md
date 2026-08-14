@@ -1,6 +1,6 @@
 # Chaos-driven pseudo-randomness against ChaCha8 in neural network training
 
-Status: Phases 0, 0.5, 1, 3, 4 and 5 complete. Phase 2 not executed; see
+Status: Phases 0, 0.5, 1, 3, 4, 5 and 6 complete. Phase 2 not executed; see
 [Phase 2](#7-phase-2-not-executed). Sections 1 to 10 describe Phases 0 and 1 and
 are unchanged since they were first published; Phases 0.5 and 3 are added as
 sections 11 and 12.
@@ -783,3 +783,160 @@ Limitations: twenty runs per scheme; a single width; a single corruption model,
 with additive noise implemented but not reported here; probe epochs at five
 fixed positions rather than all sixty; and trajectories from one architecture on
 one task.
+
+## 15. Phase 6: spectrum of the superposed HRR + IFS + TDA operator
+
+Three matrices are derived from the same sixty per-epoch weight vectors of a
+run, normalised by Frobenius norm, averaged into one operator, and its spectrum
+compared against a null.
+
+### The prototype, and why the null is not a Gaussian ensemble
+
+A synthetic prototype run before this phase, at size 200, superposed a circulant
+matrix, a block matrix of contractive affine maps, and a Euclidean distance
+matrix over a Gaussian cloud. Against a superposition of three independent
+Gaussian ensembles it showed a spectral gap of 0.246 against 0.003, with a
+Kolmogorov-Smirnov test against the semicircle at p = 0.0003.
+
+Most of that was an artefact. A distance matrix is non-negative by construction,
+and any non-negative matrix carries a dominant eigenvalue of Perron-Frobenius
+type that has nothing to do with geometry, topology or fractals. Substituting
+the absolute value of a generic Gaussian matrix for the real distance matrix,
+which shares the non-negativity and nothing else, reproduced most of the effect:
+a gap of 0.193 against the original 0.246.
+
+REF: [Perron, 1907] "Zur Theorie der Matrices", Mathematische Annalen 64(2),
+pp. 248-263, DOI 10.1007/BF01449896.
+
+REF: [Wigner, 1958] "On the Distribution of the Roots of Certain Symmetric
+Matrices", Annals of Mathematics 67(2), pp. 325-327, DOI 10.2307/1970008.
+
+The null used throughout this phase is therefore the corrected one: the same
+circulant and affine terms, with the distance matrix replaced by the absolute
+value of a Gaussian matrix with a vanishing diagonal. That isolates what a real
+Euclidean distance matrix contributes beyond merely being non-negative, which is
+the only question this design can answer. Reporting against a plain Gaussian
+null would restate the artefact.
+
+### 6a. Calibration at the real size
+
+The prototype ran at size 200; the real matrices are 60 by 60, and the pattern
+had to be shown to survive that reduction rather than assumed to.
+
+| | Spectral gap | KS p against the semicircle |
+|---|---|---|
+| Real superposition | 0.6184 | 0.0273 |
+| Naive null, three Gaussian ensembles | 0.0054 | 1.0000 |
+| Corrected null, absolute Gaussian | 0.5217 | 0.9985 |
+
+The real operator exceeds the naive null by a factor of 114.6 and the corrected
+null by a factor of 1.19. The prototype's corresponding factors were 82 and
+1.27. The pattern reproduces at a third of the size: an enormous effect against
+the wrong null, and a small one against the right null.
+
+The spectral tools were themselves calibrated first. A Gaussian ensemble is not
+rejected against the law it obeys, and a non-negative matrix shows a leading
+eigenvalue more than three times larger than its plain counterpart. Both are
+tests in the suite. Without the first, any rejection reported here would be
+uninterpretable.
+
+### 6b. The three matrices
+
+**D_TDA** is the matrix of pairwise Euclidean distances between the sixty epoch
+vectors. It is checked to satisfy the metric axioms, including the triangle
+inequality, which is the property the corrected null deliberately does not have.
+
+**C_HRR** holds, at entry (i, j), the largest absolute component of the circular
+correlation between the weight vectors of epochs i and j, computed through the
+same transform used for unbinding in section 14. Reducing the full correlation
+vector to its peak is the standard read-out in holographic representations:
+retrieval asks where the correlation peaks and how high. Taking the value at lag
+zero instead would collapse to an ordinary inner product and discard exactly the
+shift structure that distinguishes circular correlation from a dot product.
+
+**A_IFS** tiles twenty blocks along the diagonal, cycling through the three
+affine maps of the Sierpinski chaos game in homogeneous form so that each block
+carries both the contraction and the translation, then symmetrises the result.
+
+**A_IFS is identical for all forty runs, and that is a finding rather than a
+shortcut.** The design anticipated an asymmetry between the conditions that
+involve a chaos game and those that do not, and expected the second group to use
+a fixed reference operator. No such asymmetry arises, because the three maps are
+fixed by the triangle: what the randomness selects at each step is which map to
+apply, not what the maps are. The operator that drove an `ifs-lorenz` run is the
+same one that drove an `ifs-chacha8` run and the same one used as a reference
+for `lorenz` and `chacha8`. The consequence cuts the other way, though: this
+term carries no run-level information at all and contributes a constant to every
+superposition. Whatever the spectrum discriminates, it is not discriminating on
+the strength of the IFS term.
+
+### 6c. Spectral gap against the corrected null
+
+Forty paired comparisons, each sharing its circulant and affine terms with its
+own null by construction, which is why the test is paired.
+
+| | Spectral gap |
+|---|---|
+| Real | 0.597332 ± 0.002576 |
+| Corrected null | 0.546146 ± 0.003078 |
+| Paired difference | 0.051187 ± 0.003522 |
+
+Shapiro-Wilk on the differences did not reject normality (W = 0.9666,
+p = 0.2784), so the paired t-test applies: t = 91.9249, df = 39, p below the
+resolution of the arithmetic. **H0 is rejected.**
+
+That p-value should not be read as a measure of importance. The paired design
+shares two of three terms between each pair, so the differences have a standard
+deviation of 0.0035 against a mean of 0.0512, and a t of ninety follows from
+that consistency rather than from a large effect. In magnitude the real operator
+exceeds its corrected null by about nine percent, against the eleven thousand
+percent by which it exceeds the naive one. The artefact accounts for the great
+majority of what the prototype found; what survives the correction is real,
+highly consistent, and modest.
+
+### 6d. Relation to generalisation
+
+The question that motivated the phase: does the composite spectrum predict the
+generalisation gap where the persistent-homology dimension of section 13 did not,
+where it gave r = 0.195 at p = 0.227?
+
+| Predictor | Pearson r | p | Spearman rho | p |
+|---|---|---|---|---|
+| Spectral gap of the real operator | 0.1608 | 0.3216 | 0.1480 | 0.3620 |
+| Difference from the corrected null | 0.1927 | 0.2336 | 0.1529 | 0.3462 |
+
+**No.** Neither correlates. The second row is worth a second look: r = 0.1927
+against the 0.195 that PH-dim produced on the same forty runs, which is the same
+value to within rounding. Building a composite operator out of three different
+mathematical objects and extracting its leading spectral structure recovered
+exactly as much about generalisation as the simpler measure did, which in both
+cases is nothing detectable at this sample size.
+
+### Interpretation
+
+Two results, of unequal interest.
+
+The one that survives scrutiny is narrow: a real Euclidean distance matrix
+raises the spectral gap of the superposition about nine percent above what a
+merely non-negative matrix does, consistently enough across forty runs to be
+unmistakable. The most plausible reading is that the triangle inequality and the
+embeddability that a genuine distance matrix carries add structure that
+non-negativity alone does not. This phase does not test that reading; it only
+excludes the non-negativity explanation.
+
+The one that motivated the phase failed. The composite spectrum does not predict
+generalisation, and does not improve on the simpler measure it was meant to
+better.
+
+The methodological lesson repeats the one from section 13. The headline of the
+prototype, a hundredfold gap against a Gaussian null, was almost entirely an
+artefact of a property so basic that it has a theorem named after it. It took a
+control specifically designed to share that property and nothing else to find
+out how much was left, and the answer was under a tenth of the original.
+
+Limitations: forty runs from one architecture on one task; a single matrix size,
+fixed by the number of epochs; one reduction of circular correlation to a scalar
+among several defensible choices; an IFS term that is constant across all runs
+and therefore contributes nothing to any contrast; and a null that controls for
+non-negativity but not for other properties a distance matrix has, so the
+residual nine percent is not attributed to any specific one of them.

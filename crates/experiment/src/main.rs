@@ -12,6 +12,7 @@ mod dataset;
 mod mlp;
 mod phdim;
 mod runner;
+mod spectrum;
 mod topology;
 
 use chaos_rng::{stats, ChaChaRng, LorenzRng, RngKind};
@@ -1250,6 +1251,204 @@ fn phase5() -> std::io::Result<()> {
     Ok(())
 }
 
+/// Phase 6: spectrum of the superposed operator.
+fn phase6() -> std::io::Result<()> {
+    use chaos_rng::Rng;
+    use spectrum::*;
+
+    let cfg = Config::default();
+    let data = make_moons(N_SAMPLES, NOISE, DATASET_SEED);
+    let (train, val) = train_test_split(&data, TRAIN_FRACTION, SPLIT_SEED);
+    let seeds: Vec<u64> = (0..N_RUNS as u64).map(|i| 1_000 + i).collect();
+
+    println!("Phase 6: spectrum of the superposed HRR + IFS + TDA operator");
+
+    // 6a. Calibration at the real size, reproducing the prototype's pattern.
+    println!();
+    println!("  6a. calibration at size {N}, the real scale");
+    {
+        let mut rng = Rng::new(chaos_rng::RngKind::ChaCha, 6_100);
+        let affine = affine_matrix();
+        // A synthetic trajectory stands in for a real one here, so the
+        // calibration is about the matrices rather than about any run.
+        let traj: Vec<Vec<f64>> = (0..N)
+            .map(|_| (0..64).map(|_| rng.next_normal()).collect())
+            .collect();
+        let hrr = circular_correlation_matrix(&traj);
+        let tda = distance_matrix(&traj);
+
+        let m_real = superpose(&hrr, &affine, &tda);
+        let naive = {
+            let mut r = Rng::new(chaos_rng::RngKind::ChaCha, 6_101);
+            superpose(&goe(N, &mut r), &goe(N, &mut r), &goe(N, &mut r))
+        };
+        let corrected = {
+            let mut r = Rng::new(chaos_rng::RngKind::ChaCha, 6_102);
+            superpose(&hrr, &affine, &abs_goe(N, &mut r))
+        };
+
+        let (sr, sn, sc) = (summarise(&m_real), summarise(&naive), summarise(&corrected));
+        println!(
+            "    real superposition       gap {:.4}, KS p {:.4}",
+            sr.spectral_gap, sr.ks_p_value
+        );
+        println!(
+            "    naive null, three GOE    gap {:.4}, KS p {:.4}",
+            sn.spectral_gap, sn.ks_p_value
+        );
+        println!(
+            "    corrected null, |GOE|    gap {:.4}, KS p {:.4}",
+            sc.spectral_gap, sc.ks_p_value
+        );
+        println!(
+            "    real over naive: {:.1}x   real over corrected: {:.2}x",
+            sr.spectral_gap / sn.spectral_gap.max(1e-12),
+            sr.spectral_gap / sc.spectral_gap.max(1e-12)
+        );
+    }
+
+    // 6b and 6c over the forty real runs.
+    #[derive(serde::Serialize)]
+    struct Row {
+        rng: String,
+        seed: u64,
+        gap_real: f64,
+        gap_null: f64,
+        gap_difference: f64,
+        ks_p_real: f64,
+        ks_p_null: f64,
+        max_eigenvalue_real: f64,
+        generalisation_gap: f64,
+    }
+    let mut rows: Vec<Row> = Vec::new();
+    let affine = affine_matrix();
+
+    println!();
+    println!("  6b and 6c. forty real runs");
+    for kind in [
+        RngKind::Lorenz,
+        RngKind::ChaCha,
+        RngKind::IfsLorenz,
+        RngKind::IfsChaCha,
+    ] {
+        print!("    {:<12} ", kind.as_str());
+        std::io::stdout().flush()?;
+        for &seed in seeds.iter() {
+            let (record, traj) = runner::run_once_with_snapshots(kind, seed, &train, &val, cfg);
+            let hrr = circular_correlation_matrix(&traj);
+            let tda = distance_matrix(&traj);
+
+            let m_real = superpose(&hrr, &affine, &tda);
+            let mut r = Rng::new(chaos_rng::RngKind::ChaCha, 6_200 + seed);
+            let m_null = superpose(&hrr, &affine, &abs_goe(N, &mut r));
+
+            let (sr, sn) = (summarise(&m_real), summarise(&m_null));
+            rows.push(Row {
+                rng: kind.as_str().to_string(),
+                seed,
+                gap_real: sr.spectral_gap,
+                gap_null: sn.spectral_gap,
+                gap_difference: sr.spectral_gap - sn.spectral_gap,
+                ks_p_real: sr.ks_p_value,
+                ks_p_null: sn.ks_p_value,
+                max_eigenvalue_real: sr.max_eigenvalue,
+                generalisation_gap: record.generalisation_gap,
+            });
+        }
+        println!("done");
+    }
+
+    let real: Vec<f64> = rows.iter().map(|r| r.gap_real).collect();
+    let null: Vec<f64> = rows.iter().map(|r| r.gap_null).collect();
+    let diff: Vec<f64> = rows.iter().map(|r| r.gap_difference).collect();
+
+    println!();
+    println!(
+        "  6c. spectral gap, real against the corrected null, {} paired runs",
+        rows.len()
+    );
+    println!(
+        "    real   {:.6} +/- {:.6}",
+        xstats::mean(&real),
+        xstats::std_dev(&real)
+    );
+    println!(
+        "    null   {:.6} +/- {:.6}",
+        xstats::mean(&null),
+        xstats::std_dev(&null)
+    );
+    println!(
+        "    paired difference {:.6} +/- {:.6}",
+        xstats::mean(&diff),
+        xstats::std_dev(&diff)
+    );
+
+    // The test is paired because the two matrices share two of their three
+    // terms by construction.
+    let sw = xstats::shapiro_wilk(&diff);
+    println!(
+        "    Shapiro-Wilk on the differences: W = {:.4}, p = {:.4}",
+        sw.w, sw.p_value
+    );
+    if sw.p_value > analysis::ALPHA {
+        let t = xstats::paired_t_test(&real, &null);
+        println!(
+            "    paired t-test: t = {:.4}, df = {}, p = {:.6}  ->  {}",
+            t.t,
+            t.df,
+            t.p_value,
+            if t.p_value < analysis::ALPHA {
+                "H0 REJECTED"
+            } else {
+                "H0 not rejected"
+            }
+        );
+    } else {
+        let w = xstats::wilcoxon_signed_rank(&real, &null);
+        println!(
+            "    Wilcoxon signed-rank (normality rejected): W = {}, n = {}, p = {:.6}  ->  {}",
+            w.w,
+            w.n_used,
+            w.p_value,
+            if w.p_value < analysis::ALPHA {
+                "H0 REJECTED"
+            } else {
+                "H0 not rejected"
+            }
+        );
+    }
+
+    // 6d. Does the spectrum predict generalisation where PH-dim did not?
+    let gaps: Vec<f64> = rows.iter().map(|r| r.generalisation_gap).collect();
+    println!();
+    println!(
+        "  6d. relation to the generalisation gap, {} runs",
+        rows.len()
+    );
+    for (label, v) in [
+        ("spectral gap of M", &real),
+        ("difference from the null", &diff),
+    ] {
+        let rp = phdim::pearson(v, &gaps);
+        let rs = phdim::spearman(v, &gaps);
+        println!(
+            "    {label:<26} Pearson r = {:>7.4} (p = {:.4}),  Spearman rho = {:>7.4} (p = {:.4})",
+            rp,
+            phdim::correlation_p_value(rp, v.len()),
+            rs,
+            phdim::correlation_p_value(rs, v.len())
+        );
+    }
+
+    std::fs::create_dir_all("results")?;
+    std::fs::write(
+        "results/phase6_spectrum.json",
+        serde_json::to_string_pretty(&rows).expect("serialisable"),
+    )?;
+    println!("  written results/phase6_spectrum.json");
+    Ok(())
+}
+
 fn main() -> std::io::Result<()> {
     let arg = std::env::args().nth(1).unwrap_or_default();
     match arg.as_str() {
@@ -1261,6 +1460,7 @@ fn main() -> std::io::Result<()> {
         "phase4b" => phase4b(),
         "phase4c" => phase4c(),
         "phase5" => phase5(),
+        "phase6" => phase6(),
         other => {
             eprintln!("unknown command {other:?}; expected phase0, phase1 or analyse");
             std::process::exit(2);
