@@ -1,0 +1,6 @@
+[
+  {"generator": "lorenz", "classical": true, "random_liu": false, "neither": false, "budget_exhausted": false},
+  {"generator": "chacha8", "classical": false, "random_liu": false, "neither": true, "budget_exhausted": false},
+  {"generator": "ifs_lorenz", "classical": false, "random_liu": true, "neither": false, "budget_exhausted": false},
+  {"generator": "ifs_chacha8", "classical": false, "random_liu": true, "neither": false, "budget_exhausted": false}
+]

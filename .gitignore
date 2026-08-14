@@ -1,2 +1,4 @@
-/target
+# Anchored at the root would miss crates/kirs-pilot, which is excluded from the
+# workspace and so builds into a target directory of its own.
+target/
 /phase1.log

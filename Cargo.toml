@@ -6,6 +6,15 @@ members = [
     "crates/experiment",
 ]
 
+# kirs-pilot is deliberately not a member. It depends by path on a separate
+# read-only clone of github.com/Yatrogenesis/kirs, which is not part of this
+# repository, so including it here would make `cargo test --workspace` fail for
+# anyone who has not cloned that reference. Excluding it keeps this workspace
+# self-contained and buildable from a fresh clone; the pilot is built
+# explicitly, and CI verifies it in a job that clones kirs at the pinned commit.
+# See crates/kirs-pilot/README.md.
+exclude = ["crates/kirs-pilot"]
+
 [workspace.package]
 version = "0.1.0"
 edition = "2021"

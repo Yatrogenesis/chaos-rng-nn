@@ -1,6 +1,6 @@
 # Chaos-driven pseudo-randomness against ChaCha8 in neural network training
 
-Status: Phases 0, 0.5, 1, 3, 4, 5 and 6 complete. Phase 2 not executed; see
+Status: Phases 0, 0.5, 1, 3, 4, 5, 6 and 7 complete. Phase 2 not executed; see
 [Phase 2](#7-phase-2-not-executed). Sections 1 to 10 describe Phases 0 and 1 and
 are unchanged since they were first published; Phases 0.5 and 3 are added as
 sections 11 and 12.
@@ -940,3 +940,151 @@ among several defensible choices; an IFS term that is constant across all runs
 and therefore contributes nothing to any contrast; and a null that controls for
 non-negativity but not for other properties a distance matrix has, so the
 residual nine percent is not attributed to any specific one of them.
+
+## 16. Phase 7: formal applicability of Pesin-type formulas, by Horn resolution
+
+### Isolation of the external repository
+
+The `kirs` repository is consumed as a read-only reference, pinned at commit
+`18a7276`. No file inside that checkout was edited, and none of its source is
+copied into this project: the new crate `crates/kirs-pilot` depends on
+`pirs-kirs` and `kirs-lab` by path. A change of pinned version would be a change
+to this repository's manifest and never to that one.
+
+Two checks establish that the coupling is clean rather than merely intended. The
+fifteen tests of `pirs-kirs` were run before anything was written and again
+afterwards, passing both times untouched, and `git status` in that checkout is
+empty with its HEAD unmoved. The only file in this repository with `kirs` in its
+path is the pilot crate itself.
+
+### What this phase does and does not do
+
+It computes no entropy, no Lyapunov exponent and no dimension. Those would be
+numerical work of a different kind and are not attempted here.
+
+What it does is ask a question the earlier phases never asked: given what is
+actually known about each generator, is the machinery whose outputs sections 12,
+13 and 15 measured formally applicable to it at all. The answer is a
+classification, and it is produced by resolution over declared facts rather than
+by assertion.
+
+REF: [Pesin, 1977] "Characteristic Lyapunov exponents and smooth ergodic
+theory", Russian Mathematical Surveys 32(4), pp. 55-114,
+DOI 10.1070/RM1977v032n04ABEH001639. The classical formula requires a
+diffeomorphism and an invariant measure absolutely continuous with respect to
+Lebesgue.
+
+REF: [Liu and Qian, 1995] "Smooth Ergodic Theory of Random Dynamical Systems",
+Lecture Notes in Mathematics 1606, Springer, DOI 10.1007/BFb0094308, and
+[Liu, 1998] "Random perturbations of Axiom A basic sets", Journal of Statistical
+Physics 90, pp. 467-490, DOI 10.1023/A:1023280407906. The random extension
+covers non-invertible systems that the classical statement excludes.
+
+### 7a. The facts, and the ones that could not be declared
+
+Every fact asserted carries its warrant. Properties with no result behind them
+are simply not declared, and that absence is the honest answer rather than a
+gap to be filled by assumption.
+
+Declared from construction, needing no citation: the Lorenz flow is invertible
+in time by uniqueness of solutions for an autonomous ODE; the ChaCha core is a
+bijection on its state, being built from additions, rotations and exclusive-ors;
+and the chaos game is not injective, since it applies one of three contractive
+maps and keeps only the image, so two points can share a successor.
+
+Declared from the literature: the Lorenz attractor supports an SRB measure,
+absolutely continuous along unstable manifolds, established rigorously by
+Tucker, "A Rigorous ODE Solver and Smale's 14th Problem", Foundations of
+Computational Mathematics 2 (2002), pp. 53-117, DOI 10.1007/s002080010018.
+
+**Not declared, and why.** No absolute-continuity fact is asserted for ChaCha8:
+this project knows of no such result, and the question is arguably not well
+posed for a finite-state permutation. None is asserted for the two chaos-game
+families either, but for the opposite reason. Their attractor carries a
+self-similar measure on a set of Hausdorff dimension log(3)/log(2), which has
+zero Lebesgue measure in the plane, so that measure is singular rather than
+absolutely continuous, as section 13 measured directly. Stating that negative
+would require negation, which this engine does not have, so the fact is absent.
+The absence therefore means "unknown" in one case and "known to be false" in the
+other, and the engine cannot tell them apart. That is a real limitation of the
+encoding, not of the mathematics.
+
+### 7b. The rules, and the one that could not be written
+
+Two rules are expressible and were written as clauses: the classical formula
+applies to a generator that is invertible and has an absolutely continuous
+invariant measure; the random extension applies to a generator that is not
+invertible.
+
+The third category, neither formula applying, is **not** a clause. The engine
+accepts Horn clauses only, with no negation, as its own parser states: "No
+operators, no cut — Horn clauses only". A rule of the form
+`sin_formula(G) :- generador(G), not(...), not(...)` cannot be expressed and
+would not parse. It was tempting to reshape the question so the design looked
+more elegant than the engine allows; instead the two positive rules are queried
+separately and the classification is made in Rust outside the engine. A test
+asserts that the engine really does not resolve a negated goal, so that if a
+future version gained negation, the test would fail and the logic could move
+back inside the program where it belongs.
+
+Every query runs through the bounded entry point with a budget of ten thousand
+steps, and exhaustion is recorded per generator. No query exhausted its budget,
+which matters because an exhausted query returns no answers and would otherwise
+be indistinguishable from a genuine negative.
+
+### 7c. Result
+
+| Generator | Classical (Pesin 1977) | Random (Liu) | Neither | Budget exhausted |
+|---|---|---|---|---|
+| lorenz | yes | no | no | no |
+| chacha8 | no | no | **yes** | no |
+| ifs_lorenz | no | yes | no | no |
+| ifs_chacha8 | no | yes | no | no |
+
+### A retroactive limitation on sections 13 and 15
+
+Sections 13 and 15 computed a persistent-homology dimension for all four
+families and compared them with analysis of variance, treating them uniformly.
+This phase shows they are not uniform in the relevant sense. One family has the
+classical hypotheses satisfied, two fall under the random extension, and one,
+ChaCha8, satisfies neither.
+
+That last is the uncomfortable one, because ChaCha8 is the control against which
+the whole project measures. It is a finite-state permutation with no attractor,
+no invariant measure in the sense these theorems require, and no reason to
+expect Pesin-type machinery to describe it at all.
+
+This does not invalidate anything already reported. The PH-dim values are
+measurements of the geometry of a point cloud in parameter space, and a point
+cloud has a fractal dimension whether or not any ergodic theorem applies to what
+produced it. The estimator was calibrated on synthetic clouds of known dimension
+and reproduces them. What changes is the interpretation: those numbers were
+never backed by a theoretical guarantee that the machinery applied to the
+generators in the first place, and sections 13 and 15 did not say so because the
+question had not been asked. It is being said now.
+
+The comparison across four conditions remains legitimate as an empirical one.
+Reading it as a comparison of dynamical invariants would not be.
+
+### Limitations
+
+This is a verification of formal applicability, not a computation of the
+quantities themselves. Nothing here says what the entropy or the exponents are,
+only which theorem could in principle be invoked.
+
+The knowledge base is small and hand-authored, so it verifies the consistency of
+what was declared and cannot discover a hypothesis nobody thought to encode.
+
+Absence of a fact is ambiguous in this encoding, meaning "no known result" for
+ChaCha8 and "known to be false" for the chaos-game families, and the engine
+treats both identically for want of negation.
+
+The random extension carries its own absolute-continuity condition on the random
+measure, which is a hypothesis of Liu's theorem and is not verified here for
+either chaos-game family. The row reading "yes" under the random extension
+should therefore be read as "the invertibility obstruction does not apply",
+which is weaker than "the theorem's hypotheses are met".
+
+And the classification of the third category happens outside the engine, so it
+is a claim about what the engine failed to prove rather than a proof of a
+negative.

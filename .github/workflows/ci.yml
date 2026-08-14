@@ -31,3 +31,49 @@ jobs:
 
       - name: Phase 0 gate
         run: cargo run --release -p experiment -- phase0
+
+  # Phase 7 depends on an external read-only reference, so it is verified in its
+  # own job. The reference is cloned at a pinned commit and never modified; the
+  # final step asserts that, so that a change to it would fail the build rather
+  # than pass unnoticed.
+  kirs-pilot:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: chaos-rng-nn
+      - uses: actions/checkout@v4
+        with:
+          repository: Yatrogenesis/kirs
+          ref: 18a727649f455b1aa332f99057a2a2f747ce769c
+          path: kirs-readonly
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: chaos-rng-nn/crates/kirs-pilot
+
+      - name: Format
+        working-directory: chaos-rng-nn
+        run: cargo fmt --manifest-path crates/kirs-pilot/Cargo.toml -- --check
+
+      - name: Clippy, warnings are errors
+        working-directory: chaos-rng-nn
+        run: cargo clippy --manifest-path crates/kirs-pilot/Cargo.toml --all-targets -- -D warnings
+
+      - name: Tests
+        working-directory: chaos-rng-nn
+        run: cargo test --release --manifest-path crates/kirs-pilot/Cargo.toml
+
+      - name: Classification reproduces the committed result
+        working-directory: chaos-rng-nn
+        run: |
+          cargo run --release --manifest-path crates/kirs-pilot/Cargo.toml --bin classify
+          git diff --exit-code results/phase7_applicability.json
+
+      - name: The reference was not modified
+        working-directory: kirs-readonly
+        run: |
+          test -z "$(git status --porcelain)" || { git status --porcelain; exit 1; }
+          test "$(git rev-parse HEAD)" = "18a727649f455b1aa332f99057a2a2f747ce769c"
