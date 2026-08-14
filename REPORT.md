@@ -1,6 +1,6 @@
 # Chaos-driven pseudo-randomness against ChaCha8 in neural network training
 
-Status: Phases 0, 0.5, 1, 3, 4, 5, 6, 7, 8 and 9 complete. Phase 2 not executed; see
+Status: Phases 0, 0.5, 1, 3, 4, 5, 6, 7, 8, 9 and 10 complete. Phase 2 not executed; see
 [Phase 2](#7-phase-2-not-executed). Sections 1 to 10 describe Phases 0 and 1 and
 are unchanged since they were first published; Phases 0.5 and 3 are added as
 sections 11 and 12.
@@ -1395,3 +1395,183 @@ dependence structure very little room to survive.
 
 Failing to detect a difference is not establishing equivalence, unchanged since
 Phase 1.
+
+## 19. Phase 10: topological resilience and graded plasticity as design hypotheses (not prior validated results)
+
+**Where these ideas come from, and how they are used here.** Both are taken from
+drafts of the author's. What is reused is the mathematical shape of two
+expressions and nothing else. Those drafts also contain experimental results
+that cannot be verified and that carry the marks of fabrication, so no figure
+from them appears anywhere in this section, and no claim below rests on anything
+reported there. Every weight, threshold and steepness is a hyperparameter of
+this experiment, swept and documented, not a value inherited as anyone's
+optimum. The two expressions are treated as hypotheses being tested here for the
+first time.
+
+The idea behind the second does have a verifiable origin, and that is what is
+cited for it.
+
+REF: [Grossberg, 2013] "Adaptive Resonance Theory: How a brain learns to
+consciously attend, learn, and recognize a changing world", Neural Networks 37,
+pp. 1-47, DOI 10.1016/j.neunet.2012.09.017. Checked against CrossRef. Adaptive
+resonance makes plasticity conditional rather than uniform; the expression used
+here is one particular parameterisation of that.
+
+### Two defects in the persistence implementation, found on the way
+
+The topological signal is computed with the `tda` crate, the same one Phase 0.5
+uses. Two defects surfaced, both established against inputs whose answer can be
+worked out by hand.
+
+Every finite dimension-zero bar is returned twice. On four points at 0, 1, 3 and
+6, whose spanning tree has edges 1, 2 and 3, the crate returns `[1,1,2,2,3,3]`.
+The cause is that `compute_persistence` computes dimension zero once by
+union-find and again by reducing the edge boundary matrix, and keeps both. The
+duplicates are exact, so this phase deduplicates the bars rather than halving
+the sum, since halving a total would apply the per-feature threshold to phantom
+features.
+
+Homology is returned only up to one less than the dimension requested: asking
+for two yields nothing in dimension two, silently and without error. This one
+matters more, because without noticing it the `w_2` term of the weighting would
+have been multiplying an empty set for the whole phase with nothing to signal
+it.
+
+Neither affects the published results of earlier phases. Phases 0.5 and 4b use
+only dimension one, which is returned correctly, and the PH-dim of Phases 3 and
+4c does not use this crate at all. A separate defect report has been written.
+
+### 10a. Does the measure respond to structure at all?
+
+`T(S) = sum_d w_d sum_i max(0, pers(f_i) - sigma_d)` over the correlation
+structure of a layer's value nodes. Node activity is centred and scaled to unit
+norm, so the Euclidean distance between two nodes is exactly `sqrt(2(1 - rho))`
+and the geometry is a genuine metric rather than an ad hoc function of
+correlation.
+
+Four synthetic structures with known topology: modules driven by shared latent
+signals, which have clusters but no cycle; a ring, which has a cycle; modules
+arranged on a ring, which has both; and independent noise, which should have
+neither.
+
+| Weighting | modular | ring | modular-ring | noise | loops > noise |
+|---|---|---|---|---|---|
+| with-components | 3.3871 | 3.0112 | 3.2263 | 12.3309 | **no** |
+| loops | 0.0000 | 1.2192 | 0.6062 | 0.0000 | yes |
+| loops-and-voids | 0.0000 | 0.8535 | 0.4680 | 0.0000 | yes |
+| voids-heavy | 0.0000 | 0.6096 | 0.3758 | 0.0000 | yes |
+| loops-strict | 0.0000 | 1.0192 | 0.4062 | 0.0000 | yes |
+
+**The first row is the finding, and it is a correction to the hypothesis rather
+than to the code.** Any weighting that puts positive weight on dimension zero
+ranks pure noise far above every structured case. The reason is not an
+implementation error and not a matter of tuning: total dimension-zero
+persistence is exactly the weight of the minimum spanning tree, which is largest
+when every point is far from every other, and that is precisely what independent
+noise produces. Structure clusters points, and clustering shortens those bars.
+No positive `w_0` can make the expression rank structure first. That identity is
+verified as a test against Prim's algorithm, and the failing configuration is
+kept in the sweep so the failure is visible rather than quietly removed. It is
+excluded from the comparison, for that reason.
+
+With `w_0 = 0` the measure works, and the threshold is what makes it work.
+Independent noise generates several hundred very short one-dimensional bars
+whose sum exceeds a genuine loop's single long bar, so an unthresholded total
+would also rank noise first. At a threshold of 0.10 every noise bar falls below
+the cut and the noise column is exactly zero, while a real cycle survives. The
+plain modular case also scores zero, which is correct rather than a failure: it
+has clusters and no cycle, and a measure of loops should say so.
+
+### 10b and 10c. The two mechanisms applied to the Phase 9 network
+
+Precision modulated by `T(S)`, and a graded learning rate
+`alpha_i = alpha_max / (1 + exp(-beta(l_i - l_threshold)))`, kept as separate
+conditions and also combined. Twenty seeds per condition, the Phase 9 network
+and the two-moons task throughout.
+
+Two fairness constraints are enforced as tests, for the reason Phase 9's
+precision map was built the same way. The plasticity multipliers are rescaled so
+they average exactly one, and the topological signal is standardised against a
+running mean and mean absolute deviation of itself before the logistic map, so
+its median precision is one whatever the signal's units. Without either, a
+condition would change the mean learning rate as well as its distribution, and
+any difference would be a difference of step size in a theoretical costume.
+
+The negative control is a permutation: each node's activity is shuffled
+independently, which destroys the correlation between nodes while leaving every
+node's own distribution exactly as it was. The signal keeps its scale and loses
+its meaning.
+
+**Validation loss.** The omnibus rejects at every setting. What moves it is
+entirely the plasticity gate.
+
+| Gate | Multipliers | Spread | d | Holm p |
+|---|---|---|---|---|
+| gentle-early | 0.275, 1.233, 1.492 | 1.217 | -0.759 | 0.0645 |
+| gentle-midpoint | 0.095, 1.000, 1.905 | 1.810 | -1.230 | 0.0012 |
+| sharp-midpoint | 0.005, 1.000, 1.995 | 1.990 | -1.469 | 0.0001 |
+
+Graded plasticity makes the network **worse**, and the harm is monotone in how
+widely the gate spreads the per-layer rates. The combined condition adds nothing
+over the gate alone, at every setting, so the joint effect is entirely the gate's.
+
+The mechanism is visible in the multipliers and should temper how the result is
+read. At the sharp midpoint gate the first weight matrix receives 0.005 of the
+base rate, so it barely trains at all. This is therefore not evidence against
+graded plasticity as an idea; it is evidence that grading the rate across a
+three-layer network of this size, at these settings, starves the early layer and
+costs accuracy, and that the cost scales with how much it is starved. A gentler
+grading costs less and is not significant after correction.
+
+**Topological resilience does nothing.** Its effect on validation loss is
+d = -0.268 at the light threshold and -0.159 at the strict one, against a
+shuffled control at -0.170 and 0.000 respectively. At the strict threshold the
+genuine signal and its own permutation control converge, which is what should
+happen if what little the signal was moving came from short bars rather than
+from structure. No comparison approaches significance.
+
+**Generalisation gap.** Nothing, anywhere. The omnibus p-values run from 0.9023
+to 0.9976 across the four settings, every Holm-adjusted comparison is 1.0000,
+and no effect size exceeds 0.23 in magnitude.
+
+### Sensitivity, as a result rather than a footnote
+
+The topological conclusion is stable across both thresholds tested and is
+identical across the three gate settings, as it must be since the gate does not
+touch it. That invariance is a check on the harness as much as a result.
+
+The plasticity conclusion is **not** stable, and that is the more informative
+half. It is significant at both midpoint gates and falls to Holm p = 0.0645 at
+the early gate, tracking the spread of the multipliers monotonically. A single
+setting would have supported either "graded plasticity harms learning" or "no
+effect", and reporting one of those alone would have been a claim about a
+hyperparameter dressed as a claim about a mechanism.
+
+### Limitations
+
+The `loops-and-voids` weighting was calibrated but **not** carried into the
+comparison, and the reason is cost. Carrying a dimension-two term into training
+requires building the complex one dimension higher, which on thirty-two nodes
+takes 3.49 seconds per evaluation against 47 milliseconds one dimension lower,
+a seventy-five-fold wall that puts the sweep at roughly five hours. The
+persistence reduction scans all previous columns inside a loop over columns, so
+it is quadratic in the simplex count, and dimension three over thirty-two points
+is close to thirty-six thousand tetrahedra. What is untested is whether the
+comparison's conclusion would change if the signal counted voids as well as
+loops. Two things bound that gap: the topological condition shows no effect at
+either threshold, at or below its own control; and in the calibration the
+dimension-two term barely moves, a single bar clearing the threshold in one of
+four synthetic cases.
+
+The signal is recomputed every thirty-two weight updates, a little under once
+per epoch, on a fixed probe set. A schedule that tracked it continuously might
+behave differently and would cost far more.
+
+Twenty seeds resolve a standardised effect of about 0.886 at eighty percent
+power, by the same slightly optimistic normal approximation used since Phase 8.
+The plasticity effects clear that comfortably; the topological ones are far
+below it, so small effects there are not excluded.
+
+One network, one task, one depth. A three-layer hierarchy is a thin place to
+test a hypothesis about grading across depth, and the starvation mechanism above
+would be far less severe in a deeper network where adjacent layers differ less.

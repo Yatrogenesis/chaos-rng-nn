@@ -100,3 +100,18 @@ jobs:
         run: |
           cargo run --release -p predictive-coding --bin phase9
           git diff --exit-code results/phase9_predictive_coding.json
+
+  # Phase 10 sweeps five hyperparameter settings and is the longest job, so it
+  # runs on its own. It exits non-zero if the topological measure fails to
+  # separate structure from noise, and the committed results must reproduce.
+  phase10:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Phase 10 gate and reproducibility
+        run: |
+          cargo run --release -p topo-plasticity --bin phase10
+          git diff --exit-code results/phase10_topo_plasticity.json
