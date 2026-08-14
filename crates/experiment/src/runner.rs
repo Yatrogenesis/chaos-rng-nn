@@ -2,9 +2,9 @@
 //! Executes single training runs and whole conditions, and records their
 //! outcomes.
 
-use crate::dataset::Dataset;
 use crate::mlp::{Config, Mlp};
 use chaos_rng::{Rng, RngKind};
+use experiment::dataset::Dataset;
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
 
@@ -184,7 +184,7 @@ pub fn run_condition(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dataset::{make_moons, train_test_split};
+    use experiment::dataset::{make_moons, train_test_split};
 
     #[test]
     fn a_run_is_reproducible_bit_for_bit() {

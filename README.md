@@ -40,6 +40,13 @@ NARMA-10. What makes that null worth stating is a negative control: a condition
 differing from the baseline only in the ChaCha round count moved memory capacity
 more than any real change of generator did.
 
+A further phase leaves gradient descent behind entirely, in a predictive coding
+network whose weight updates are local and Hebbian. Its local rule is first
+checked against the backpropagation gradient it is claimed to approximate,
+reaching a correlation of 0.92 once the inference settles. Modulating the
+precision weighting with each generator changes neither the validation loss nor
+the generalisation gap.
+
 ## Layout
 
 ```
@@ -47,6 +54,7 @@ crates/chaos-rng    Lorenz generator, ChaCha8 control, the IFS chaos game, and t
 crates/xstats       Welch, Mann-Whitney U, Shapiro-Wilk, ANOVA, Kruskal-Wallis, Holm, and the special functions they need
 crates/experiment   Dataset, MLP, run harness, topology, PH-dim, binding schemes, analysis and figures
 crates/reservoir    Echo state networks whose fixed weights come from the generators, trained by ridge regression
+crates/predictive-coding  Predictive coding network, local Hebbian updates, precision modulated by the generators
 crates/kirs-pilot   Which Pesin-type formula applies to each generator, by Horn resolution (outside the workspace, see its README)
 assets/fonts        Font vendored for figure rendering, with its licence
 results/            Machine-readable output, committed so the report can be checked
@@ -79,6 +87,7 @@ cargo run --release -p experiment -- phase5     # holographic binding
 cargo run --release -p experiment -- phase6     # spectrum of the superposed operator
 
 cargo run --release -p reservoir --bin phase8   # reservoir computing, ridge readout
+cargo run --release -p predictive-coding --bin phase9   # predictive coding, precision modulation
 
 # Phase 7 is built separately because it depends on an external read-only
 # reference. See crates/kirs-pilot/README.md.

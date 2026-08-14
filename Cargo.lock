@@ -559,6 +559,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "predictive-coding"
+version = "0.1.0"
+dependencies = [
+ "chaos-rng",
+ "experiment",
+ "rand_chacha",
+ "serde",
+ "serde_json",
+ "xstats",
+]
+
+[[package]]
 name = "primal-check"
 version = "0.3.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
