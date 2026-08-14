@@ -1,0 +1,20 @@
+[package]
+name = "predictive-coding"
+description = "Phase 9: a predictive coding network whose precision weighting is modulated by the validated generators"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+chaos-rng = { workspace = true }
+xstats = { workspace = true }
+experiment = { workspace = true }
+rand_chacha = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+[lints.rust]
+missing_docs = "warn"

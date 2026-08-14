@@ -1,6 +1,6 @@
 # Chaos-driven pseudo-randomness against ChaCha8 in neural network training
 
-Status: Phases 0, 0.5, 1, 3, 4, 5, 6, 7 and 8 complete. Phase 2 not executed; see
+Status: Phases 0, 0.5, 1, 3, 4, 5, 6, 7, 8 and 9 complete. Phase 2 not executed; see
 [Phase 2](#7-phase-2-not-executed). Sections 1 to 10 describe Phases 0 and 1 and
 are unchanged since they were first published; Phases 0.5 and 3 are added as
 sections 11 and 12.
@@ -1249,3 +1249,149 @@ normalisation. A comparison without it would be a comparison of spectral radii.
 Twenty instances per condition, with the resolution floor stated above. Failing
 to detect a difference is not the same as establishing equivalence, which is the
 same caveat that has applied since Phase 1 and applies here unchanged.
+
+## 18. Phase 9: predictive coding with precision modulated by the validated generators
+
+**Scope first.** This is the perception and learning side only. The network
+builds a hierarchy of value nodes and error nodes, each level predicting the one
+below, relaxes the value nodes until they settle on an explanation of the input,
+and then changes each synapse by the product of the two activities it already
+connects. There is no action on the world, no policy selection and no expected
+free energy. The full active inference framework is not implemented here and
+nothing below should be read as implementing it. What is implemented is the
+tractable subset.
+
+REF: [Whittington and Bogacz, 2017] "An Approximation of the Error
+Backpropagation Algorithm in a Predictive Coding Network with Local Hebbian
+Synaptic Plasticity", Neural Computation 29(5), pp. 1229-1262,
+DOI 10.1162/NECO_a_00949. Title, journal, volume, issue, pages and authors were
+checked against CrossRef rather than carried over from the specification.
+REF: [Friston, 2013] "Life as we know it", Journal of The Royal Society
+Interface 10(86), 20130475, DOI 10.1098/rsif.2013.0475. Cited for why precision
+is the principled place to inject a modulating signal rather than an arbitrary
+hook, not for anything implemented here. Also verified against CrossRef.
+
+The architecture is three weight matrices over layers of 2, 32, 32 and 2 nodes,
+the same widths as the Phase 1 network. The nonlinearity is `tanh`, chosen over a
+rectifier because the inference loop needs the derivative at the current value of
+every node and a rectifier's is zero over half its domain, where the relaxation
+would stall. Sixteen relaxation steps per sample at an inference rate of 0.2,
+then a weight step of 0.05, over thirty epochs in batches of 32. The inference
+rate and the learning rate are separate quantities throughout.
+
+The readout metric is the softmax cross-entropy Phase 1 reports, so the numbers
+are the same quantity on the same data. The training objective is not the same:
+predictive coding minimises squared prediction error, and Phase 1 trained on
+cross-entropy with Adam. Values here are therefore comparable across the
+conditions of this phase, and should not be set directly against Phase 1's.
+
+### 9a. Does the local update approximate the backpropagation gradient?
+
+The claim in the literature is that it does, approximately, once the inference
+has settled. That is checkable rather than assumable, and checking it first is
+what makes the rest of the phase meaningful: comparing generators on a network
+that does not approximate what it is supposed to would measure nothing.
+
+The exact backpropagation gradient of the squared output error is computed on
+the same weights, the same input and the same target, and compared with the
+accumulated local update. The gradient implementation is itself checked against
+central finite differences, because a reference that is wrong certifies nothing.
+
+| Relaxation steps | Correlation | Cosine |
+|---|---|---|
+| 1 | 0.7539 | 0.7551 |
+| 2 | 0.7944 | 0.7958 |
+| 4 | 0.8494 | 0.8507 |
+| 8 | 0.8986 | 0.8996 |
+| 16 | 0.9228 | 0.9237 |
+| 32 | 0.9241 | 0.9251 |
+| 64 | 0.9190 | 0.9200 |
+| 128 | 0.9161 | 0.9171 |
+
+Agreement climbs steeply from a single step to about sixteen, then flattens and
+drifts very slightly down. The rise is the expected behaviour and the gate is
+built on it. The small decline past the plateau is worth stating rather than
+cropping: at that depth the relaxation has redistributed error into the interior
+levels, and the resulting update is a step on the network's own energy rather
+than on the output loss alone, so a little of the agreement with pure
+backpropagation is given back. The approximation is a property of the settled
+regime, not something that improves without limit.
+
+The gate is passed. No exact match was expected, and one would have suggested the
+inference loop had been short-circuited.
+
+### 9b. Precision modulated by each generator
+
+Precision enters as `pi_l`, the weight on each level's squared prediction error,
+and is redrawn at every step of the inference loop rather than once per sample or
+once per epoch, because that is where the theory says the weighting acts.
+
+The map from a uniform variate to a precision is
+`g(u) = 2 / (1 + exp(-2(2u - 1)))`. It is strictly positive, so the inference
+stays a descent on a real energy; bounded above by two, so no step can be scaled
+arbitrarily; and it sends the median of its input to exactly one. That last
+property is what keeps the comparison fair, and it is verified as a test: a
+modulation whose mean precision drifted from one would change the effective step
+size, and any difference found would have been a difference of learning rate in a
+theoretical costume.
+
+Everything except precision is identical across conditions for a given seed: the
+initial weights, the order of presentation, and the data. Six conditions, twenty
+seeds each.
+
+| Condition | Val loss | Accuracy | Gap |
+|---|---|---|---|
+| constant | 0.4607 | 0.8451 | 0.0174 |
+| lorenz | 0.4612 | 0.8447 | 0.0173 |
+| chacha8 | 0.4615 | 0.8439 | 0.0172 |
+| ifs-lorenz | 0.4615 | 0.8449 | 0.0174 |
+| ifs-chacha8 | 0.4611 | 0.8437 | 0.0174 |
+| chacha12-control | 0.4613 | 0.8443 | 0.0175 |
+
+Validation loss, omnibus Kruskal-Wallis H = 0.5549, p = 0.9900. Generalisation
+gap, omnibus one-way ANOVA F = 0.2060, p = 0.9594. No pairwise comparison
+approaches significance: the smallest raw p-value across both metrics is 0.5856,
+and every Holm-adjusted value is 1.0000. All effect sizes are below 0.18 in
+magnitude.
+
+H0 is not rejected.
+
+### The negative control, and what it does and does not settle
+
+A sixth condition modulates precision with ChaCha12. It differs from the chacha8
+condition only in the number of ChaCha rounds, and both are cryptographically
+strong, so any difference between them is noise. This is the Phase 8 device, and
+it was constructible here because the baseline is a modulated condition of the
+same family rather than the unmodulated one.
+
+On the generalisation gap it works as intended: the control registers d = 0.263,
+larger than every genuine change of generator, the largest of which is 0.166.
+Effects of that size arise here from a change that cannot matter.
+
+On validation loss it does not. The control registers d = 0.035, smaller than
+three of the four generator effects. That is one realisation of a noisy quantity
+and it calibrates nothing on this metric, and reporting only the gap result would
+have been picking the metric that flattered the conclusion. What can be said on
+validation loss is the weaker statement: every effect is far below the 0.886 this
+design can detect, and every p-value is above 0.58.
+
+### Limitations
+
+Twenty seeds resolve a standardised effect of about 0.886 at eighty percent
+power, and the normal approximation behind that figure flatters the design by
+roughly three percent. Large effects are ruled out; small ones are not.
+
+One architecture, one relaxation depth, one inference rate, one learning rate,
+one modulation function. The logistic map was chosen for the three properties
+above rather than tuned, and a different shape, a different steepness or a
+precision that varied per layer rather than independently at every level could
+behave differently. None of that was explored.
+
+The precision is drawn independently at each level and each step. A schedule
+correlated across levels, or one whose autocorrelation matched the generator's
+own, would be a different and arguably more faithful test of whether the
+structure of a chaotic stream can matter; this design gives the stream's
+dependence structure very little room to survive.
+
+Failing to detect a difference is not establishing equivalence, unchanged since
+Phase 1.

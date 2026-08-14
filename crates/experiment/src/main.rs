@@ -8,7 +8,6 @@
 
 mod analysis;
 mod binding;
-mod dataset;
 mod mlp;
 mod phdim;
 mod runner;
@@ -16,7 +15,7 @@ mod spectrum;
 mod topology;
 
 use chaos_rng::{stats, ChaChaRng, LorenzRng, RngKind};
-use dataset::{make_moons, train_test_split};
+use experiment::dataset::{make_moons, train_test_split};
 use mlp::Config;
 use runner::{run_condition, RunRecord};
 use serde::{Deserialize, Serialize};

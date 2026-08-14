@@ -5,6 +5,7 @@ members = [
     "crates/xstats",
     "crates/experiment",
     "crates/reservoir",
+    "crates/predictive-coding",
 ]
 
 # kirs-pilot is deliberately not a member. It depends by path on a separate
@@ -31,6 +32,7 @@ repository = "https://github.com/Yatrogenesis/chaos-rng-nn"
 chaos-rng = { path = "crates/chaos-rng" }
 xstats = { path = "crates/xstats" }
 reservoir = { path = "crates/reservoir" }
+experiment = { path = "crates/experiment" }
 rand = "=0.9.5"
 rand_chacha = "=0.10.0"
 serde = { version = "=1.0.229", features = ["derive"] }
