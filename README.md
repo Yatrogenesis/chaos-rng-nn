@@ -99,6 +99,7 @@ cargo run --release -p experiment -- phase6     # spectrum of the superposed ope
 
 cargo run --release -p reservoir --bin phase8   # reservoir computing, ridge readout
 cargo run --release -p predictive-coding --bin phase9   # predictive coding, precision modulation
+cargo run --release -p predictive-coding --bin phase11  # shared trajectory, level offset
 cargo run --release -p topo-plasticity --bin phase10    # topological resilience, graded plasticity
 
 # Phase 7 is built separately because it depends on an external read-only

@@ -1,6 +1,6 @@
 # Chaos-driven pseudo-randomness against ChaCha8 in neural network training
 
-Status: Phases 0, 0.5, 1, 3, 4, 5, 6, 7, 8, 9 and 10 complete. Phase 2 not executed; see
+Status: Phases 0, 0.5, 1, 3, 4, 5, 6, 7, 8, 9, 10 and 11 complete. Phase 2 not executed; see
 [Phase 2](#7-phase-2-not-executed). Sections 1 to 10 describe Phases 0 and 1 and
 are unchanged since they were first published; Phases 0.5 and 3 are added as
 sections 11 and 12.
@@ -1575,3 +1575,122 @@ below it, so small effects there are not excluded.
 One network, one task, one depth. A three-layer hierarchy is a thin place to
 test a hypothesis about grading across depth, and the starvation mechanism above
 would be far less severe in a deeper network where adjacent layers differ less.
+
+## 20. Phase 11: precision with shared trajectory and level offset (a structural revision of Phase 9)
+
+**What changes and what does not.** The network, the two-moons task, the six
+conditions including the ChaCha12 control, the logistic map from a variate to a
+precision, the sixteen relaxation steps and every training hyperparameter are
+exactly those of Phase 9. One thing changes: where the numbers come from.
+
+Phase 9 drew each level's precision independently, at each relaxation step of
+each sample. Nothing tied one draw to the next within a level, and nothing tied
+one level to another. A generator's structure is a property of its orbit over
+time, and that scheme gave it almost no way to survive as far as the place it
+was supposed to act. Phase 9's report listed this as an open limitation rather
+than a settled question, and this phase closes it.
+
+Here all three levels read from a single continuous orbit. Level `l` reads the
+value at trajectory step `t + l * delta`, and `t` advances by one at every
+relaxation step without restarting between samples or between epochs. The
+sixteen precisions a level sees while one sample relaxes are sixteen consecutive
+states of that generator's own orbit, and the three levels are the same orbit at
+three fixed offsets.
+
+### 11a. Does the mechanism do what it claims?
+
+Two blocking checks, both run before any comparison.
+
+The offset must be real. The cross-correlation between level zero's precision
+series and level one's must peak at the configured `delta`. An offset applied to
+the wrong index, or applied to the relaxation counter instead of to the
+trajectory, would still produce a plausible-looking modulation and every result
+after it would be a measurement of something other than what is described.
+
+| Offset | Peak lag, all five generators | Peak value | Median, level 0 | Median, level 2 |
+|---|---|---|---|---|
+| 0 | 0 | 1.0000 | 0.9932 to 1.0061 | 0.9932 to 1.0061 |
+| 1 | 1 | 1.0000 | 0.9932 to 1.0061 | 0.9932 to 1.0061 |
+| 4 | 4 | 1.0000 | 0.9932 to 1.0061 | 0.9932 to 1.0061 |
+| 16 | 16 | 1.0000 | 0.9932 to 1.0061 | 0.9932 to 1.0060 |
+
+Twenty combinations, four offsets by five generators, and every one peaks
+exactly where it is configured to. The peak value is exactly one by
+construction, since level one's value at time `t` is the identical float level
+zero reads at `t + delta`, so the check establishes the *lag*, not the existence
+of correlation.
+
+The Phase 9 fairness property must also survive. Each level's median precision
+must still be one, or the condition would differ from the baseline in the
+effective step size and not only in how the precision varies. The logistic map
+is unchanged so the marginal should be too, but correlation between levels is
+new, and the property was checked rather than inherited. Every median sits
+within 0.7 percent of one.
+
+### 11b. The comparison
+
+Twenty seeds per condition at each of the four offsets, the same pre-registered
+test sequence as every earlier phase, on validation loss, accuracy and the
+generalisation gap.
+
+| Offset | Validation loss | Accuracy | Generalisation gap |
+|---|---|---|---|
+| 0 | p = 0.9669 | p = 0.9982 | p = 0.8257 |
+| 1 | p = 0.9961 | p = 0.9996 | p = 0.9457 |
+| 4 | p = 0.9994 | p = 0.9993 | p = 0.9794 |
+| 16 | p = 0.9933 | p = 0.9970 | p = 0.9541 |
+
+H0 is not rejected anywhere. Twelve omnibus tests, none below 0.82. Every one of
+the sixty pairwise comparisons has a Holm-adjusted p-value of exactly 1.0000.
+The largest effect anywhere in the phase is 0.263 in magnitude, against a design
+that resolves 0.886.
+
+There is no pattern in the offset. The result at `delta = 0`, where the three
+levels are perfectly synchronised, is indistinguishable from the result at
+`delta = 16`, where level one reads during one sample what level zero will read
+during the next.
+
+The negative control settles it. On the generalisation gap it registers 0.296,
+0.247 and 0.243 at the first three offsets, **larger in each case than any
+genuine change of generator at that offset**. A condition that differs from the
+others only in the number of ChaCha rounds moved the metric more than swapping a
+cryptographic stream for a chaotic attractor did.
+
+### This is a stronger null than Phase 9's, and it should be read as one
+
+Phase 9's result carried an objection it could not answer: the design destroyed
+the very structure it was looking for, by drawing every value independently, so
+a null there was partly a fact about the sampling scheme. That objection is now
+gone. The generator's orbit reaches the precision weighting intact, its temporal
+correlation is preserved by construction, the levels are coupled along the same
+trajectory at a verified offset, and the offset was swept from perfect
+synchrony to a full relaxation apart.
+
+Nothing changed. Not on any metric, at any offset, for any generator.
+
+This is not one more null on a pile. It is the null that the previous one was
+not entitled to claim, obtained after removing the specific reason the previous
+one could be doubted. Across eleven phases the finding is now consistent from
+three independent directions: no formal channel exists for one of the four
+generators at all, no empirical effect appears under gradient descent, under a
+fixed reservoir, or under local Hebbian learning, and none appears when the
+generator's own temporal structure is carried intact into the one quantity the
+theory says modulates inference.
+
+### Limitations
+
+Twenty seeds resolve a standardised effect of about 0.886, by the same slightly
+optimistic normal approximation used since Phase 8. Effects smaller than that
+remain outside what this design can see, and that is unchanged from Phase 9.
+
+Four offsets, one of them degenerate. A `delta` far larger than a relaxation
+window, or an offset that varied during training rather than being fixed, was
+not tried.
+
+The trajectory is read at one value per relaxation step. A scheme where a level
+consumed several trajectory steps per relaxation step, changing the effective
+timescale of the modulation relative to the inference, is a different design and
+is untested.
+
+Failing to detect a difference is still not establishing equivalence. What has
+changed is that the failure can no longer be attributed to the sampling.

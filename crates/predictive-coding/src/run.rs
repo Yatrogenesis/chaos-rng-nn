@@ -249,6 +249,10 @@ impl ConditionResult {
     pub fn gaps(&self) -> Vec<f64> {
         self.runs.iter().map(|r| r.generalisation_gap).collect()
     }
+    /// Validation accuracies in run order.
+    pub fn accuracies(&self) -> Vec<f64> {
+        self.runs.iter().map(|r| r.final_val_accuracy).collect()
+    }
 }
 
 /// Phase 9b. Trains every condition over the same seeds.
@@ -343,6 +347,7 @@ pub fn analyse(results: &[ConditionResult], metric: &str) -> MetricAnalysis {
         .map(|r| match metric {
             "final_val_loss" => r.losses(),
             "generalisation_gap" => r.gaps(),
+            "final_val_accuracy" => r.accuracies(),
             other => panic!("unknown metric {other}"),
         })
         .collect();
