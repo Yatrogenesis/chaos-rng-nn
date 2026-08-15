@@ -1,6 +1,6 @@
 # Chaos-driven pseudo-randomness against ChaCha8 in neural network training
 
-Status: Phases 0, 0.5, 1, 3, 4, 5, 6, 7, 8, 9, 10 and 11 complete. Phase 2 not executed; see
+Status: Phases 0, 0.5, 1, 3, 4, 5, 6, 7, 8, 9, 10, 11 and 12 complete. Phase 2 not executed; see
 [Phase 2](#7-phase-2-not-executed). Sections 1 to 10 describe Phases 0 and 1 and
 are unchanged since they were first published; Phases 0.5 and 3 are added as
 sections 11 and 12.
@@ -1694,3 +1694,133 @@ is untested.
 
 Failing to detect a difference is still not establishing equivalence. What has
 changed is that the failure can no longer be attributed to the sampling.
+## 21. Phase 12: a non-zero floor on the graded plasticity gate
+
+**Where the hypothesis comes from, and what that source actually shows.** The
+idea was suggested by a result in the author's `cortexia-workspace`: a system
+whose integrated information stays at zero, which invites the thought that
+something without a floor of activity can be trapped at null integration. That
+file was read rather than taken on trust, and it says slightly less than the
+suggestion implies.
+
+`consciousness_with_noise_results.json` reports Phi across five noise
+amplitudes from 0 to 2.0. Phi is zero at all five, but it is also zero in the
+no-noise condition, at 4.4e-17, which is machine epsilon. The file records
+`phi_ratio` as 0.0 and declares its own outcome: hypothesis "Phi increases with
+noise amplitude", conclusion "rejected". The implementation behind it is
+genuine, `iit/src/phi.rs` doing exhaustive partition search up to fifteen
+elements with the Balduzzi and Tononi geometric approximation above that, so
+this is not a proxy standing in for Phi.
+
+What that experiment shows is a system whose Phi never left zero under any
+condition tested. It does not show noise collapsing Phi, and it does not show a
+floor rescuing anything, because no floor was tried. The motivation for this
+phase is therefore an extrapolation from a flat null in another domain, not a
+transfer of a demonstrated rescue. The half about an optimum spoiled by excess
+is not claimed here at all, because the same workspace's other file does not
+support it.
+
+That said, the question stands on its own. Phase 10 found that grading the
+learning rate across layers harms the network, monotonically in how widely it
+spreads the rates, and that at the sharpest setting the first weight matrix
+receives 0.005 of the base rate and barely trains. Whether preventing that
+starvation recovers the loss is worth asking regardless of where the idea came
+from.
+
+### 12a. The floor, and the fairness constraint rechecked
+
+`alpha_i = alpha_min + (alpha_max - alpha_min) / (1 + exp(-beta(l_i - l_threshold)))`,
+with the multipliers then rescaled to average exactly one. The floor is applied
+before that normalisation, so raising it does not raise the mean rate: it
+compresses the spread around it. Without that the comparison would be a
+comparison of step sizes.
+
+The averages-to-one constraint was **rechecked across the whole floor sweep**
+rather than inherited from Phase 10, because adding a floor changes the family.
+It holds to within 1e-12 at every gate, every floor and every depth from two to
+six. A separate test asserts that a floor of zero reproduces Phase 10's
+multipliers bit for bit, which is what makes the two phases comparable rather
+than merely similar.
+
+The floor of 0.06 is derived, not chosen. The hypothesis asks for a setting
+where no layer falls below a tenth of the base rate, and the sharpest gate is
+the binding case: its raw logistic at the shallowest layer is 0.002473, so the
+floor putting the normalised multiplier exactly at 0.10 solves to 0.050159. A
+floor of 0.05 lands at 0.0997, just short, so 0.06 is used and reaches 0.1176.
+
+### 12b. Result
+
+Twenty seeds, the same seeds throughout, so the comparison against Phase 10's
+own condition is paired rather than a fresh experiment placed beside an old one.
+
+| Gate | Floor | Multipliers | Smallest | Val loss | d vs baseline | Paired d vs floor 0 | Holm p |
+|---|---|---|---|---|---|---|---|
+| gentle-midpoint | 0.00 | 0.095, 1.000, 1.905 | 0.0949 | 0.4666 | -1.230 | reference | |
+| gentle-midpoint | 0.06 | 0.197, 1.000, 1.803 | 0.1973 | 0.4656 | -1.000 | -2.953 | 0.0000 |
+| gentle-midpoint | 0.15 | 0.331, 1.000, 1.669 | 0.3310 | 0.4644 | -0.750 | -2.931 | 0.0000 |
+| gentle-midpoint | 0.35 | 0.564, 1.000, 1.436 | 0.5642 | 0.4628 | -0.414 | -2.908 | 0.0000 |
+| sharp-midpoint | 0.00 | 0.005, 1.000, 1.995 | 0.0049 | 0.4677 | -1.469 | reference | |
+| sharp-midpoint | 0.06 | 0.118, 1.000, 1.882 | 0.1176 | 0.4664 | -1.176 | -2.993 | 0.0000 |
+| sharp-midpoint | 0.15 | 0.265, 1.000, 1.735 | 0.2645 | 0.4650 | -0.868 | -2.968 | 0.0000 |
+| sharp-midpoint | 0.35 | 0.521, 1.000, 1.479 | 0.5209 | 0.4631 | -0.469 | -2.943 | 0.0000 |
+| gentle-early | 0.00 | 0.275, 1.233, 1.492 | 0.2751 | 0.4644 | -0.759 | reference | |
+| gentle-early | 0.06 | 0.339, 1.213, 1.449 | 0.3388 | 0.4639 | -0.657 | -2.522 | 0.0000 |
+| gentle-early | 0.15 | 0.428, 1.184, 1.388 | 0.4275 | 0.4633 | -0.531 | -2.497 | 0.0000 |
+| gentle-early | 0.35 | 0.600, 1.129, 1.271 | 0.6000 | 0.4623 | -0.326 | -2.458 | 0.0000 |
+
+H0 is rejected. A non-zero floor reduces the harm, at every gate, monotonically
+in the size of the floor, and the paired comparison against the floorless
+condition on identical seeds is significant everywhere with effects between
+-2.46 and -2.99.
+
+### What the floor is actually doing, which is not a new mechanism
+
+Raising the floor does two things at once: it lifts the smallest multiplier and
+it compresses the spread. Those are the two candidate explanations, and they
+can be told apart by asking whether the twelve cells fall on one curve.
+
+They do. Across all twelve, spanning three gates and four floors, the
+correlation between spread and effect size is **-0.9892**, and a single linear
+fit `d = -0.8426 * spread + 0.3030` accounts for every cell with a maximum
+residual of 0.095 and a root mean square of 0.050. The gate's identity adds
+nothing once its spread is known.
+
+So the floor helps exactly in proportion to how much it flattens the gate. This
+is not a rescue by a mechanism the earlier phase did not have; it is Phase 10's
+own dose-response law, `harm grows with spread`, reached from the other
+direction and confirmed across a wider range. The strongest floor tested,
+0.35, brings the gentle-early gate to multipliers of 0.600, 1.129 and 1.271,
+which is most of the way back to uniform, and its harm falls to -0.326
+accordingly. Extrapolating the fit, the harm reaches zero at zero spread, which
+is the uniform baseline.
+
+The honest summary is that the floor works, and that it works by undoing the
+grading. A floor large enough to remove the harm entirely would remove the
+grading entirely, which defeats the purpose the grading was introduced for.
+
+### Limitations
+
+**The design cannot separate the two explanations.** Raising the floor lifts the
+smallest multiplier and compresses the spread simultaneously, by construction of
+the formula: the correlation of the minimum with the effect is +0.9825, barely
+weaker than the spread's -0.9892, and the two are collinear here. Distinguishing
+"not starving the shallowest layer" from "reducing the dispersion" would require
+a gate that raises the minimum while holding the spread fixed, which this family
+cannot express. Neither reading is established over the other by these data, and
+the spread reading is preferred here only because it also covers Phase 10, which
+had no floor at all.
+
+The motivating result is from a different domain and, read carefully, is a
+rejected hypothesis with flat-zero integrated information rather than a
+demonstrated rescue. Nothing in this phase should be taken as transferring a
+finding about synthetic consciousness into machine learning. What transferred
+was a question.
+
+One network of three layers, one task, twenty seeds, resolving a standardised
+effect of about 0.886 by the same slightly optimistic approximation used since
+Phase 8. The paired effects are far above that; the unpaired ones at the largest
+floors are not.
+
+The floor sweep stops at 0.35 and does not reach the degenerate limit where the
+gate becomes uniform. The linear fit predicts that limit, but predicting it is
+not measuring it.
