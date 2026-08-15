@@ -101,6 +101,7 @@ cargo run --release -p reservoir --bin phase8   # reservoir computing, ridge rea
 cargo run --release -p predictive-coding --bin phase9   # predictive coding, precision modulation
 cargo run --release -p predictive-coding --bin phase11  # shared trajectory, level offset
 cargo run --release -p topo-plasticity --bin phase10    # topological resilience, graded plasticity
+cargo run --release -p topo-plasticity --bin phase12    # a floor on the plasticity gate
 
 # Phase 7 is built separately because it depends on an external read-only
 # reference. See crates/kirs-pilot/README.md.

@@ -30,6 +30,12 @@ pub struct Gate {
     pub beta: f64,
     /// Normalised depth at which the gate is half open.
     pub threshold: f64,
+    /// Floor below which the raw logistic is not allowed to fall, as a
+    /// fraction of its maximum.
+    ///
+    /// Zero reproduces the Phase 10 formula exactly, which is what makes the
+    /// two phases comparable rather than merely similar.
+    pub floor: f64,
 }
 
 /// The settings swept in this phase.
@@ -42,18 +48,40 @@ pub const SWEEP: [Gate; 3] = [
         label: "gentle-midpoint",
         beta: 6.0,
         threshold: 0.5,
+        floor: 0.0,
     },
     Gate {
         label: "sharp-midpoint",
         beta: 12.0,
         threshold: 0.5,
+        floor: 0.0,
     },
     Gate {
         label: "gentle-early",
         beta: 6.0,
         threshold: 0.25,
+        floor: 0.0,
     },
 ];
+
+/// Floors swept in Phase 12, as a fraction of the gate's maximum.
+///
+/// Zero is Phase 10 exactly, and is included so the comparison has a reference
+/// rather than being a fresh experiment beside an old one.
+///
+/// The second value is derived rather than picked. The hypothesis asks for a
+/// setting where no layer falls below a tenth of the base rate, and the
+/// sharpest gate is the binding case: its raw logistic at the shallowest layer
+/// is 0.002473, so the floor `f` that puts the normalised multiplier exactly at
+/// 0.10 solves `(f + (1-f)*0.002473) / (f + (1-f)*0.500000) = 0.10`, giving
+/// `f = 0.050159`. A floor of 0.05 lands at 0.0997, just under, so 0.06 is used
+/// and reaches 0.1176.
+///
+/// The two larger values flatten the gate progressively. They are there because
+/// a floor high enough to erase the grading would defeat the purpose of grading,
+/// and that failure mode should be visible in the sweep rather than argued
+/// about.
+pub const FLOORS: [f64; 4] = [0.0, 0.06, 0.15, 0.35];
 
 impl Gate {
     /// Multipliers on the learning rate, one per weight matrix.
@@ -68,15 +96,26 @@ impl Gate {
     ///
     /// What survives the normalisation is the shape: deeper layers learn faster
     /// than shallow ones, or the reverse, at the same total rate.
+    ///
+    /// The floor is applied before the normalisation, so raising it does not
+    /// raise the mean rate, it compresses the spread around it. That is the
+    /// only way the comparison stays a comparison of grading rather than of
+    /// step size, and it is why the averages-to-one test below covers the whole
+    /// floor sweep and not just the floorless case.
     pub fn multipliers(&self, depth: usize) -> Vec<f64> {
         assert!(depth > 0, "a network with no weight matrices has no gate");
         if depth == 1 {
             return vec![1.0];
         }
+        // alpha_i = alpha_min + (alpha_max - alpha_min) * logistic, with
+        // alpha_max fixed at one because the scale is removed by the
+        // normalisation below. Only the ratio between the floor and the
+        // maximum survives it, which is the quantity the hypothesis is about.
         let raw: Vec<f64> = (0..depth)
             .map(|i| {
                 let l = i as f64 / (depth - 1) as f64;
-                1.0 / (1.0 + (-self.beta * (l - self.threshold)).exp())
+                let logistic = 1.0 / (1.0 + (-self.beta * (l - self.threshold)).exp());
+                self.floor + (1.0 - self.floor) * logistic
             })
             .collect();
         let mean = raw.iter().sum::<f64>() / depth as f64;
@@ -96,18 +135,106 @@ mod tests {
 
     #[test]
     fn the_multipliers_average_exactly_one() {
-        // The fairness of every comparison in Phase 10c rests on this.
+        // The fairness of every comparison in Phase 10c and Phase 12 rests on
+        // this, and the floor changes the family, so the constraint is
+        // rechecked across the whole sweep rather than inherited from the
+        // floorless case.
         for gate in SWEEP {
-            for depth in 2..=6 {
-                let m = gate.multipliers(depth);
-                let mean = m.iter().sum::<f64>() / depth as f64;
+            for floor in FLOORS {
+                let g = Gate { floor, ..gate };
+                for depth in 2..=6 {
+                    let m = g.multipliers(depth);
+                    let mean = m.iter().sum::<f64>() / depth as f64;
+                    assert!(
+                        (mean - 1.0).abs() < 1e-12,
+                        "{} with floor {floor} at depth {depth} averaged {mean}",
+                        g.label
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn a_zero_floor_reproduces_the_phase_ten_gate_exactly() {
+        // The comparison against Phase 10 is only a comparison if the
+        // floorless case is bit-for-bit what Phase 10 ran.
+        for gate in SWEEP {
+            assert_eq!(gate.floor, 0.0);
+            let m = gate.multipliers(3);
+            let raw: Vec<f64> = (0..3)
+                .map(|i| {
+                    let l = i as f64 / 2.0;
+                    1.0 / (1.0 + (-gate.beta * (l - gate.threshold)).exp())
+                })
+                .collect();
+            let mean = raw.iter().sum::<f64>() / 3.0;
+            for (got, want) in m.iter().zip(raw.iter().map(|v| v / mean)) {
+                assert_eq!(*got, want, "{}", gate.label);
+            }
+        }
+    }
+
+    #[test]
+    fn a_higher_floor_compresses_the_spread_without_moving_the_mean() {
+        // This is the mechanism the phase is testing, stated as a property.
+        for gate in SWEEP {
+            let spread = |f: f64| {
+                let m = Gate { floor: f, ..gate }.multipliers(3);
+                m.iter().cloned().fold(f64::NEG_INFINITY, f64::max)
+                    - m.iter().cloned().fold(f64::INFINITY, f64::min)
+            };
+            for pair in FLOORS.windows(2) {
                 assert!(
-                    (mean - 1.0).abs() < 1e-12,
-                    "{} at depth {depth} averaged {mean}",
-                    gate.label
+                    spread(pair[1]) < spread(pair[0]),
+                    "{}: floor {} did not compress against {}",
+                    gate.label,
+                    pair[1],
+                    pair[0]
                 );
             }
         }
+    }
+
+    #[test]
+    fn the_intended_floor_keeps_every_layer_above_a_tenth_of_the_base_rate() {
+        // The hypothesis is about not starving a layer, so the sweep has to
+        // contain a setting where no layer is starved, and the sharpest gate is
+        // the hardest case.
+        let sharp = SWEEP.iter().find(|g| g.label == "sharp-midpoint").unwrap();
+        let starved = sharp
+            .multipliers(3)
+            .into_iter()
+            .fold(f64::INFINITY, f64::min);
+        assert!(
+            starved < 0.01,
+            "the floorless case should starve: {starved}"
+        );
+        let floored = Gate {
+            floor: 0.06,
+            ..*sharp
+        }
+        .multipliers(3)
+        .into_iter()
+        .fold(f64::INFINITY, f64::min);
+        // The derivation in FLOORS puts the exact threshold at f = 0.050159,
+        // so 0.06 clears it and 0.05 would not. That boundary is recorded here
+        // rather than assumed.
+        assert!(
+            floored >= 0.10,
+            "floor 0.06 left the shallowest layer at {floored}"
+        );
+        let under = Gate {
+            floor: 0.05,
+            ..*sharp
+        }
+        .multipliers(3)
+        .into_iter()
+        .fold(f64::INFINITY, f64::min);
+        assert!(
+            under < 0.10,
+            "0.05 was expected to fall just short, got {under}"
+        );
     }
 
     #[test]

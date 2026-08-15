@@ -130,3 +130,17 @@ jobs:
         run: |
           cargo run --release -p predictive-coding --bin phase11
           git diff --exit-code results/phase11_shared_trajectory.json
+
+  # Phase 12 sweeps four floors across three gates against a shared baseline.
+  # The committed results must reproduce byte for byte from the seeds.
+  phase12:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Phase 12 reproducibility
+        run: |
+          cargo run --release -p topo-plasticity --bin phase12
+          git diff --exit-code results/phase12_plasticity_floor.json
