@@ -115,3 +115,18 @@ jobs:
         run: |
           cargo run --release -p topo-plasticity --bin phase10
           git diff --exit-code results/phase10_topo_plasticity.json
+
+  # Phase 11 repeats the Phase 9 comparison at four offsets, so it runs on its
+  # own. It exits non-zero if the offset mechanism fails its verification, and
+  # the committed results must reproduce byte for byte from the seeds.
+  phase11:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Phase 11 gate and reproducibility
+        run: |
+          cargo run --release -p predictive-coding --bin phase11
+          git diff --exit-code results/phase11_shared_trajectory.json

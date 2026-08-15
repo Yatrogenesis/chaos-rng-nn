@@ -88,7 +88,13 @@ impl ChaCha12Stream {
         }
     }
 
-    fn next_f64(&mut self) -> f64 {
+    /// Returns the next variate uniform on `[0, 1)`, by the same 53-bit
+    /// construction the qualified generators use.
+    ///
+    /// Public so that Phase 11 can drive the same control from a shared
+    /// trajectory rather than reimplementing the conversion, which would be a
+    /// second place for the two to drift apart.
+    pub fn next_f64(&mut self) -> f64 {
         use rand_chacha::rand_core::Rng as _;
         (self.inner.next_u64() >> 11) as f64 / (1u64 << 53) as f64
     }

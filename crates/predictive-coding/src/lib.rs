@@ -30,3 +30,4 @@
 pub mod network;
 pub mod precision;
 pub mod run;
+pub mod trajectory;
