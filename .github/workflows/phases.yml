@@ -1,0 +1,136 @@
+name: Phase reproducibility
+
+# These jobs re-run whole experimental phases and compare the committed results
+# byte for byte, which takes about half an hour of runner time. A change that
+# cannot affect a result should not pay that: documentation, figures and the
+# licence are excluded below.
+#
+# The filter is an allowlist rather than a list of exclusions, deliberately. An
+# exclusion list fails open, so a new source directory added later would be
+# silently skipped and the reproducibility gate would stop covering it without
+# anyone noticing. An allowlist fails closed: the new directory simply does not
+# trigger the jobs until it is added here, which is visible the first time
+# someone looks for the check.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'crates/**'
+      - 'results/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - '.github/workflows/phases.yml'
+  pull_request:
+    paths:
+      - 'crates/**'
+      - 'results/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - '.github/workflows/phases.yml'
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  kirs-pilot:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: chaos-rng-nn
+      - uses: actions/checkout@v4
+        with:
+          repository: Yatrogenesis/kirs
+          ref: 18a727649f455b1aa332f99057a2a2f747ce769c
+          path: kirs-readonly
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: chaos-rng-nn/crates/kirs-pilot
+
+      - name: Format
+        working-directory: chaos-rng-nn
+        run: cargo fmt --manifest-path crates/kirs-pilot/Cargo.toml -- --check
+
+      - name: Clippy, warnings are errors
+        working-directory: chaos-rng-nn
+        run: cargo clippy --manifest-path crates/kirs-pilot/Cargo.toml --all-targets -- -D warnings
+
+      - name: Tests
+        working-directory: chaos-rng-nn
+        run: cargo test --release --manifest-path crates/kirs-pilot/Cargo.toml
+
+      - name: Classification reproduces the committed result
+        working-directory: chaos-rng-nn
+        run: |
+          cargo run --release --manifest-path crates/kirs-pilot/Cargo.toml --bin classify
+          git diff --exit-code results/phase7_applicability.json
+
+      - name: The reference was not modified
+        working-directory: kirs-readonly
+        run: |
+          test -z "$(git status --porcelain)" || { git status --porcelain; exit 1; }
+          test "$(git rev-parse HEAD)" = "18a727649f455b1aa332f99057a2a2f747ce769c"
+
+  # Phase 9 takes several minutes, so it runs as its own job rather than
+  # lengthening the main one. It exits non-zero if the check against the
+  # backpropagation gradient fails, and the committed results must reproduce
+  # byte for byte from the seeds.
+  phase9:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Phase 9 gate and reproducibility
+        run: |
+          cargo run --release -p predictive-coding --bin phase9
+          git diff --exit-code results/phase9_predictive_coding.json
+
+  # Phase 10 sweeps five hyperparameter settings and is the longest job, so it
+  # runs on its own. It exits non-zero if the topological measure fails to
+  # separate structure from noise, and the committed results must reproduce.
+  phase10:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Phase 10 gate and reproducibility
+        run: |
+          cargo run --release -p topo-plasticity --bin phase10
+          git diff --exit-code results/phase10_topo_plasticity.json
+
+  # Phase 11 repeats the Phase 9 comparison at four offsets, so it runs on its
+  # own. It exits non-zero if the offset mechanism fails its verification, and
+  # the committed results must reproduce byte for byte from the seeds.
+  phase11:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Phase 11 gate and reproducibility
+        run: |
+          cargo run --release -p predictive-coding --bin phase11
+          git diff --exit-code results/phase11_shared_trajectory.json
+
+  # Phase 12 sweeps four floors across three gates against a shared baseline.
+  # The committed results must reproduce byte for byte from the seeds.
+  phase12:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Phase 12 reproducibility
+        run: |
+          cargo run --release -p topo-plasticity --bin phase12
+          git diff --exit-code results/phase12_plasticity_floor.json
