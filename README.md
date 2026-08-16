@@ -69,6 +69,7 @@ crates/topo-plasticity    Topological resilience and graded plasticity over the 
 crates/kirs-pilot   Which Pesin-type formula applies to each generator, by Horn resolution (outside the workspace, see its README)
 assets/fonts        Font vendored for figure rendering, with its licence
 results/            Machine-readable output, committed so the report can be checked
+docs/               Two defects found in a dependency, with reproductions and patches
 figures/            Generated plots
 ```
 

@@ -1439,7 +1439,13 @@ it.
 
 Neither affects the published results of earlier phases. Phases 0.5 and 4b use
 only dimension one, which is returned correctly, and the PH-dim of Phases 3 and
-4c does not use this crate at all. A separate defect report has been written.
+4c does not use this crate at all. The full write-up, with reproductions on
+inputs whose answer is known by hand, the root cause in the crate's source and a
+suggested patch for each, is at
+[docs/tda-0.1.0-persistence-defects.md](docs/tda-0.1.0-persistence-defects.md).
+It lives here rather than in the crate's own repository because this is the
+project that consumes it and the project that had to work around it; filing it
+elsewhere would put the workaround and its justification in different places.
 
 ### 10a. Does the measure respond to structure at all?
 

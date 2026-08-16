@@ -153,7 +153,9 @@ pub const MAX_RADIUS: f64 = 2.0;
 /// Finite bar lengths per homology dimension, with the crate's defects undone.
 ///
 /// Two corrections are applied, both established against inputs whose answer is
-/// known by hand rather than assumed, and both written up separately:
+/// known by hand rather than assumed, and both written up in full at
+/// `docs/tda-0.1.0-persistence-defects.md`, root cause and suggested patch
+/// included:
 ///
 /// - Every finite dimension-zero pair is returned twice, because the crate
 ///   computes dimension zero once by union-find and again by reducing the edge
